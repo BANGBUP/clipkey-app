@@ -132,7 +132,7 @@ function renderStatus(status) {
   usbMode?.render(status)
   pcPair?.render(status)
   // A PC just paired, connected, disconnected or was identified: refresh the paired list.
-  const hostKey = `${status.pcConnected}:${status.hostProfile}:${status.usbPc}`
+  const hostKey = `${status.pcConnected}:${status.hostProfile}:${status.usbPc}:${status.activeConn}`
   const paired = status.pairAction !== lastPairAction && status.pairAction === PAIR_ACTION.DONE
   if (paired || (lastHostKey && hostKey !== lastHostKey)) hostsUi?.refresh()
   lastHostKey = hostKey

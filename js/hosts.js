@@ -15,6 +15,7 @@ function parseHost(bytes) {
   // Alias follows the name (newer firmware); older firmware stops after the name.
   const aliasAt = HOST_HEADER + nameLen
   const aliasLen = bytes.length > aliasAt ? bytes[aliasAt] : 0
+  if (aliasLen > 0 && bytes.length < aliasAt + 1 + aliasLen) throw new Error('기기 별명 길이 오류')
   const alias = new TextDecoder().decode(bytes.slice(aliasAt + 1, aliasAt + 1 + aliasLen))
   return {
     type: SECURE_MSG.HOST,

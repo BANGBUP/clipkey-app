@@ -103,7 +103,7 @@ export function parseAuthRead(view) {
 
 /**
  * Status layout (little endian): [flags u8][queue_free u16][queue_used u16][keep_awake_s u16][mod u8][key u8]
- *                                [pair_action u8][0 u32 (PIN is sent encrypted)][caps u8][host profile u8]
+ *                                [pair_action u8][0 u32 (PIN is sent encrypted)][caps u8][host profile u8][active PC conn u8]
  * @param {DataView} view
  */
 export function parseStatus(view) {
@@ -128,5 +128,6 @@ export function parseStatus(view) {
     passkey: view.byteLength >= 14 ? view.getUint32(10, true) : 0,
     usbOtg: view.byteLength >= 15 ? (view.getUint8(14) & CAPS.USB_OTG) !== 0 : true,
     hostProfile: view.byteLength >= 16 ? view.getUint8(15) : 0,
+    activeConn: view.byteLength >= 17 && view.getUint8(16) !== 0xff ? view.getUint8(16) : null,
   })
 }
