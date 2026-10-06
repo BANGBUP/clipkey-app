@@ -8,6 +8,7 @@ import { setupUsbMode } from './usbmode.js'
 import { setupPcPairing } from './pcpair.js'
 import { setupHostsUi } from './hostsui.js'
 import { setupNickname } from './nickname.js'
+import { hostTitle } from './hosts.js'
 import { createReconnector } from './reconnect.js'
 import { tokenStore } from './auth.js'
 import { TOGGLE_KEYS, KEEP_AWAKE_KEYS, DEFAULT_KEEP_AWAKE_KEY, HOST_PROFILE, PAIR_ACTION } from './constants.js'
@@ -70,11 +71,26 @@ let nickname = null
 let userDisconnected = false // the user pressed 연결 끊기: don't auto-reconnect
 let suppressNextReconnect = false // a disconnect we caused on purpose (re-register)
 let lastPairAction = null
+let lastHostKey = '' // pcConnected / profile / wired: refresh the paired list when it changes
 
 // "회사 PC (ClipKey-0F22)" once the nickname is known, else just the device name.
 function deviceLabel() {
   const name = client.deviceName || '기기'
   return nickname?.value ? `${nickname.value} (${name})` : name
+}
+
+// "입력 대상: 회사 노트북" on every tab, so you always know where the text goes.
+function renderTarget(status) {
+  const label = $('targetLabel')
+  label.classList.toggle('hidden', !status)
+  if (!status) return
+  let target = null
+  if (status.usbPc) target = '유선 연결 PC'
+  else if (status.pcConnected) target = hostsUi?.activeHost ? hostTitle(hostsUi.activeHost) : '블루투스 PC'
+  label.replaceChildren(
+    document.createTextNode('입력 대상: '),
+    target ? Object.assign(document.createElement('b'), { textContent: target }) : document.createTextNode('없음 (PC 미연결)'),
+  )
 }
 
 function renderStatus(status) {
@@ -93,7 +109,10 @@ function renderStatus(status) {
     renderKeepAwake(null)
     usbMode?.render(null)
     pcPair?.render(null)
+    hostsUi?.clear()
     hostsUi?.render()
+    renderTarget(null)
+    lastHostKey = ''
     return
   }
   const hostKind = status.hostProfile === HOST_PROFILE.APPLE ? ' (iPad/Mac)' : status.hostProfile ? ' (Windows)' : ''
@@ -112,9 +131,13 @@ function renderStatus(status) {
   renderKeepAwake(status)
   usbMode?.render(status)
   pcPair?.render(status)
-  // A PC just finished pairing (or its OS profile changed): refresh the paired list.
-  if (status.pairAction !== lastPairAction && status.pairAction === PAIR_ACTION.DONE) hostsUi?.refresh()
+  // A PC just paired, connected, disconnected or was identified: refresh the paired list.
+  const hostKey = `${status.pcConnected}:${status.hostProfile}:${status.usbPc}`
+  const paired = status.pairAction !== lastPairAction && status.pairAction === PAIR_ACTION.DONE
+  if (paired || (lastHostKey && hostKey !== lastHostKey)) hostsUi?.refresh()
+  lastHostKey = hostKey
   lastPairAction = status.pairAction
+  renderTarget(status)
   if (status.pairingOpen) notify('기기가 등록 모드입니다')
 }
 
@@ -362,7 +385,7 @@ function init() {
   wireKeepAwake()
   pcPair = setupPcPairing({ client, notify })
   usbMode = setupUsbMode({ client, notify })
-  hostsUi = setupHostsUi({ client, notify })
+  hostsUi = setupHostsUi({ client, notify, onChange: () => renderTarget(client.status) })
   nickname = setupNickname({ client, notify, onChange: () => client.status && renderStatus(client.status) })
   hostsUi.render()
   live = setupLive({

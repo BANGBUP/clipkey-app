@@ -1,7 +1,14 @@
 // Settings: list of paired PCs / tablets, with type (Windows / Apple) and delete.
 
 import { SECURE_MSG, HOST_PROFILE_LABEL } from './constants.js'
-import { encodeListHosts, encodeDeleteHost, encodeSetHostProfile, formatHostAddr } from './hosts.js'
+import {
+  encodeListHosts,
+  encodeDeleteHost,
+  encodeSetHostProfile,
+  encodeSetHostAlias,
+  formatHostAddr,
+  hostTitle,
+} from './hosts.js'
 
 const el = (tag, props = {}, children = []) => {
   const node = Object.assign(document.createElement(tag), props)
@@ -10,9 +17,9 @@ const el = (tag, props = {}, children = []) => {
 }
 
 /**
- * @param {{ client, notify: (msg: string) => void }} deps
+ * @param {{ client, notify: (msg: string) => void, onChange?: (hosts) => void }} deps
  */
-export function setupHostsUi({ client, notify }) {
+export function setupHostsUi({ client, notify, onChange = () => {} }) {
   const list = document.getElementById('hostList')
   const refreshBtn = document.getElementById('hostRefreshBtn')
   let incoming = [] // HOST entries by index until HOSTS_END
@@ -36,6 +43,25 @@ export function setupHostsUi({ client, notify }) {
       send(encodeSetHostProfile(host.addr, Number(select.value))).then(refresh)
     })
     return select
+  }
+
+  function renameButton(host) {
+    return el('button', {
+      className: 'btn small',
+      textContent: '별명',
+      onclick: () => {
+        const value = prompt('이 PC·태블릿의 별명 (예: 회사 노트북, 비우면 지움)', host.alias)
+        if (value === null) return
+        let frame
+        try {
+          frame = encodeSetHostAlias(host.addr, value)
+        } catch (error) {
+          notify(error.message)
+          return
+        }
+        send(frame).then(refresh)
+      },
+    })
   }
 
   function deleteButton(host, title) {
@@ -64,9 +90,10 @@ export function setupHostsUi({ client, notify }) {
     }
     list.replaceChildren(
       ...hosts.map((host) => {
-        const title = host.name || formatHostAddr(host.addr)
+        const title = hostTitle(host)
         const state = host.active ? '입력 중' : host.connected ? '연결됨' : '연결 안 됨'
-        const sub = [state, host.name ? formatHostAddr(host.addr) : '', host.detected ? '' : '종류 감지 전']
+        const own = host.alias && host.name ? host.name : ''
+        const sub = [state, own, formatHostAddr(host.addr), host.detected ? '' : '종류 감지 전']
           .filter(Boolean)
           .join(' · ')
         return el('div', { className: `host-row${host.active ? ' active' : ''}` }, [
@@ -74,7 +101,7 @@ export function setupHostsUi({ client, notify }) {
             el('strong', { textContent: title }),
             el('span', { className: 'hint', textContent: sub }),
           ]),
-          el('div', { className: 'row' }, [profileSelect(host), deleteButton(host, title)]),
+          el('div', { className: 'row' }, [profileSelect(host), renameButton(host), deleteButton(host, title)]),
         ])
       }),
     )
@@ -101,8 +128,17 @@ export function setupHostsUi({ client, notify }) {
         retries = 0
         hosts = complete
         render()
+        onChange(hosts)
       }
     },
     render,
+    /** The paired host currently receiving keystrokes, if known. */
+    get activeHost() {
+      return hosts.find((h) => h.active) ?? null
+    },
+    clear() {
+      hosts = []
+      onChange(hosts)
+    },
   })
 }

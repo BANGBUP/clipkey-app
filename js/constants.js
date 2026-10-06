@@ -48,12 +48,13 @@ export const FRAME = Object.freeze({
   SET_HOST_PROFILE: 0x1c, // [0x1c, addr type, addr x6, profile]
   SET_IME_SETTLE: 0x1d, // [0x1d, ms u16 LE]  wait after each 한/영 switch
   SET_NICKNAME: 0x1e, // [0x1e, utf8 x0..30]  shown in PC / tablet Bluetooth lists and the app
+  SET_HOST_ALIAS: 0x1f, // [0x1f, addr type, addr x6, utf8 x0..30]  user label for a paired PC
 })
 
 // Encrypted device -> phone messages on the SECURE characteristic.
 export const SECURE_MSG = Object.freeze({
   PAIR_PROMPT: 0x01, // [0x01, state, passkey u32 LE]
-  HOST: 0x02, // [0x02, index, addr type, addr x6, profile, flags, name len, name...]
+  HOST: 0x02, // [0x02, index, addr type, addr x6, profile, flags, name len, name, alias len, alias]
   HOSTS_END: 0x03, // [0x03, total]
   DEVICE_INFO: 0x04, // [0x04, nickname len, nickname utf8]
 })
@@ -67,7 +68,7 @@ export const HOST_PROFILE = Object.freeze({
 })
 
 export const HOST_PROFILE_LABEL = Object.freeze({
-  [HOST_PROFILE.AUTO]: '기본 한/영 설정 따름',
+  [HOST_PROFILE.AUTO]: '자동 (Windows 등)',
   [HOST_PROFILE.WINDOWS]: 'Windows (한/영 키)',
   [HOST_PROFILE.WINDOWS_RALT]: 'Windows (오른쪽 Alt)',
   [HOST_PROFILE.APPLE]: 'iPad / Mac (Ctrl+Space)',

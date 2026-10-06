@@ -161,3 +161,6 @@ textarea:disabled { opacity: 0.5; }
   border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; width: 100%;
 }
 .dialog .text-input { margin: 8px 0 12px; }
+
+.target { margin: 0 0 6px; font-size: 15px; }
+.target b { color: var(--ok); }

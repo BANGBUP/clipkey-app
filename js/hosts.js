@@ -12,6 +12,10 @@ function parseHost(bytes) {
   const nameLen = bytes[HOST_HEADER - 1]
   if (bytes.length < HOST_HEADER + nameLen) throw new Error('기기 이름 길이 오류')
   const flags = bytes[3 + ADDR_LEN + 1]
+  // Alias follows the name (newer firmware); older firmware stops after the name.
+  const aliasAt = HOST_HEADER + nameLen
+  const aliasLen = bytes.length > aliasAt ? bytes[aliasAt] : 0
+  const alias = new TextDecoder().decode(bytes.slice(aliasAt + 1, aliasAt + 1 + aliasLen))
   return {
     type: SECURE_MSG.HOST,
     index: bytes[1],
@@ -22,6 +26,7 @@ function parseHost(bytes) {
       detected: (flags & FLAG.DETECTED) !== 0,
       active: (flags & FLAG.ACTIVE) !== 0,
       name: new TextDecoder().decode(bytes.slice(HOST_HEADER, HOST_HEADER + nameLen)),
+      alias,
     }),
   }
 }
@@ -73,3 +78,13 @@ export function encodeSetNickname(nickname) {
   if (bytes.length > NICKNAME_MAX_BYTES) throw new Error(`별명이 너무 깁니다 (최대 ${NICKNAME_MAX_BYTES}바이트, 한글 약 10자)`)
   return Uint8Array.from([FRAME.SET_NICKNAME, ...bytes])
 }
+
+/** User label for a paired PC / tablet (e.g. "회사 노트북"). */
+export function encodeSetHostAlias(addr, alias) {
+  const bytes = new TextEncoder().encode(String(alias ?? '').trim())
+  if (bytes.length > NICKNAME_MAX_BYTES) throw new Error(`별명이 너무 깁니다 (최대 ${NICKNAME_MAX_BYTES}바이트, 한글 약 10자)`)
+  return Uint8Array.from([FRAME.SET_HOST_ALIAS, ...addrBytes(addr), ...bytes])
+}
+
+/** What to call a paired host: the user's alias, else its own name, else its address. */
+export const hostTitle = (host) => host.alias || host.name || formatHostAddr(host.addr)
