@@ -45,6 +45,20 @@
         <button id="sendBtn" class="btn primary grow">PC로 타이핑</button>
       </div>
       <button id="pasteSendBtn" class="btn wide">클립보드 내용 바로 타이핑</button>
+      <section class="phrases">
+        <div class="row"><strong class="grow">자주 쓰는 문구</strong><button id="snippetAddBtn" class="btn small">+ 추가</button></div>
+        <p class="hint" id="snippetEmpty">문구를 추가하면 누르는 즉시 PC로 타이핑합니다. 이 폰에만 저장됩니다.</p>
+        <div id="snippetList" class="phrase-list"></div>
+      </section>
+
+      <details class="phrases" id="historyBox">
+        <summary><strong>최근 보낸 텍스트</strong> <span class="hint" id="historyCount"></span></summary>
+        <label class="check"><input type="checkbox" id="historyEnabled"> 보낸 텍스트를 이 폰에 기록 (최근 20개, 클립보드 바로 타이핑은 제외)</label>
+        <p class="hint">비밀번호처럼 남기면 안 되는 내용을 보낼 때는 기록을 끄세요. 다른 앱에서 복사한 이전 항목은 입력칸을 누른 뒤 키보드의 클립보드 버튼에서 고를 수 있습니다.</p>
+        <div id="historyList" class="phrase-list"></div>
+        <button id="historyClearBtn" class="btn small danger">기록 모두 지우기</button>
+      </details>
+
       <div id="progressBox" class="progress hidden">
         <progress id="progress" max="1" value="0"></progress>
         <span id="progressText"></span>
@@ -158,6 +172,22 @@
       <div class="row">
         <button value="cancel" class="btn grow">나중에</button>
         <button value="ok" class="btn primary grow">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="snippetDialog" class="dialog">
+    <form method="dialog">
+      <h2 class="plain" id="snippetDialogTitle">문구 추가</h2>
+      <input id="snippetTitle" class="text-input" maxlength="40" placeholder="이름 (비우면 내용 앞부분)" autocomplete="off">
+      <textarea id="snippetText" rows="5" placeholder="보낼 내용 (줄바꿈은 Enter로 입력됨)"></textarea>
+      <div class="row snippet-actions">
+        <!-- Save comes first in the DOM so Enter in the title field saves (CSS shows it last). -->
+        <button value="save" class="btn primary order-last">저장</button>
+        <button value="delete" id="snippetDeleteBtn" class="btn danger small">삭제</button>
+        <button value="up" id="snippetUpBtn" class="btn small">위로</button>
+        <span class="grow"></span>
+        <button value="cancel" class="btn">취소</button>
       </div>
     </form>
   </dialog>

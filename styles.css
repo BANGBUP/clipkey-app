@@ -167,3 +167,21 @@ textarea:disabled { opacity: 0.5; }
 
 .target-select { font-weight: 600; color: var(--ok); }
 .host-row .row { flex-wrap: wrap; }
+
+.phrases { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+details.phrases > summary { cursor: pointer; padding: 4px 0; }
+details.phrases[open] > summary { margin-bottom: 4px; }
+.phrase-list { display: flex; flex-direction: column; gap: 6px; }
+.phrase-row { display: flex; gap: 6px; align-items: stretch; }
+.phrase-main {
+  flex: 1; min-width: 0; text-align: left; font: inherit; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text);
+}
+.phrase-main:active { background: var(--border); }
+.phrase-main .preview {
+  display: block; color: var(--muted); font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.snippet-actions { align-items: center; margin-top: 8px; }
+
+.order-last { order: 99; }

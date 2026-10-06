@@ -1,7 +1,7 @@
 // UI wiring for the ClipKey web app.
 
 import { createClient, isSupported } from './ble.js'
-import { normalizeText, unsupportedChars } from './keymap.js'
+import { unsupportedChars } from './keymap.js'
 import { createSender } from './sender.js'
 import { setupLive } from './live.js'
 import { setupUsbMode } from './usbmode.js'
@@ -9,6 +9,7 @@ import { setupPcPairing } from './pcpair.js'
 import { setupHostsUi } from './hostsui.js'
 import { setupNickname } from './nickname.js'
 import { setupTarget } from './target.js'
+import { setupPhrases } from './phrases.js'
 import { createReconnector } from './reconnect.js'
 import { tokenStore } from './auth.js'
 import { TOGGLE_KEYS, KEEP_AWAKE_KEYS, DEFAULT_KEEP_AWAKE_KEY, HOST_PROFILE, PAIR_ACTION } from './constants.js'
@@ -68,6 +69,7 @@ let usbMode = null
 let pcPair = null
 let hostsUi = null
 let nickname = null
+let phrases = null
 let userDisconnected = false // the user pressed 연결 끊기: don't auto-reconnect
 let suppressNextReconnect = false // a disconnect we caused on purpose (re-register)
 let lastPairAction = null
@@ -215,23 +217,26 @@ async function connect(options = {}) {
   }
 }
 
-async function sendText(text) {
+/** Types `text` on the PC. Resolves true when every key was sent. */
+async function sendText(text, { record = true } = {}) {
   if (!client.connected) {
     notify('먼저 기기에 연결하세요')
-    return
+    return false
   }
   if (!text) {
     notify('보낼 텍스트가 없습니다')
-    return
+    return false
   }
   try {
     const { skipped, completed } = await sender.sendText(text)
-    const spaces = [...normalizeText(text)].filter((ch) => ch === ' ').length
     if (!completed) notify('취소했습니다')
-    else if (skipped > 0) notify(`완료 · 띄어쓰기 ${spaces}개 · 건너뛴 문자 ${skipped}개: ${unsupportedChars(text).join(' ')}`)
-    else notify(`타이핑 완료 · 띄어쓰기 ${spaces}개`)
+    else if (skipped > 0) notify(`완료 · 건너뛴 문자 ${skipped}개: ${unsupportedChars(text).join(' ')}`)
+    else notify('타이핑 완료')
+    if (completed && record) phrases?.record(text)
+    return completed
   } catch (error) {
     notify(`전송 실패: ${error.message}`)
+    return false
   }
 }
 
@@ -260,7 +265,8 @@ function wireSend() {
     const text = await readClipboard()
     if (text) $('sendText').value = text
   })
-  $('pasteSendBtn').addEventListener('click', async () => sendText(await readClipboard()))
+  // Clipboard sends are never recorded: that is where copied passwords come from.
+  $('pasteSendBtn').addEventListener('click', async () => sendText(await readClipboard(), { record: false }))
   $('cancelBtn').addEventListener('click', () => sender.cancel().catch((e) => notify(e.message)))
 }
 
@@ -382,6 +388,7 @@ function init() {
     onSelect: (host) => target?.selectHost(host),
   })
   target = setupTarget({ client, sender, notify, getHosts: () => hostsUi.hosts })
+  phrases = setupPhrases({ sendText, fillInput: (text) => ($('sendText').value = text), notify })
   nickname = setupNickname({ client, notify, onChange: () => client.status && renderStatus(client.status) })
   hostsUi.render()
   live = setupLive({
