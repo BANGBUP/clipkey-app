@@ -17,9 +17,10 @@ const el = (tag, props = {}, children = []) => {
 }
 
 /**
- * @param {{ client, notify: (msg: string) => void, onChange?: (hosts) => void }} deps
+ * @param {{ client, notify: (msg: string) => void, onChange?: (hosts) => void,
+ *           onSelect?: (host) => void }} deps
  */
-export function setupHostsUi({ client, notify, onChange = () => {} }) {
+export function setupHostsUi({ client, notify, onChange = () => {}, onSelect = () => {} }) {
   const list = document.getElementById('hostList')
   const refreshBtn = document.getElementById('hostRefreshBtn')
   let incoming = [] // HOST entries by index until HOSTS_END
@@ -101,7 +102,14 @@ export function setupHostsUi({ client, notify, onChange = () => {} }) {
             el('strong', { textContent: title }),
             el('span', { className: 'hint', textContent: sub }),
           ]),
-          el('div', { className: 'row' }, [profileSelect(host), renameButton(host), deleteButton(host, title)]),
+          el('div', { className: 'row' }, [
+            profileSelect(host),
+            ...(host.connected && !host.active
+              ? [el('button', { className: 'btn small primary', textContent: '여기로 입력', onclick: () => onSelect(host) })]
+              : []),
+            renameButton(host),
+            deleteButton(host, title),
+          ]),
         ])
       }),
     )
@@ -132,6 +140,9 @@ export function setupHostsUi({ client, notify, onChange = () => {} }) {
       }
     },
     render,
+    get hosts() {
+      return hosts
+    },
     /** The paired host currently receiving keystrokes, if known. */
     get activeHost() {
       return hosts.find((h) => h.active) ?? null

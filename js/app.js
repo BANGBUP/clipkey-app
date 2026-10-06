@@ -8,7 +8,7 @@ import { setupUsbMode } from './usbmode.js'
 import { setupPcPairing } from './pcpair.js'
 import { setupHostsUi } from './hostsui.js'
 import { setupNickname } from './nickname.js'
-import { hostTitle } from './hosts.js'
+import { setupTarget } from './target.js'
 import { createReconnector } from './reconnect.js'
 import { tokenStore } from './auth.js'
 import { TOGGLE_KEYS, KEEP_AWAKE_KEYS, DEFAULT_KEEP_AWAKE_KEY, HOST_PROFILE, PAIR_ACTION } from './constants.js'
@@ -79,19 +79,9 @@ function deviceLabel() {
   return nickname?.value ? `${nickname.value} (${name})` : name
 }
 
-// "입력 대상: 회사 노트북" on every tab, so you always know where the text goes.
-function renderTarget(status) {
-  const label = $('targetLabel')
-  label.classList.toggle('hidden', !status)
-  if (!status) return
-  let target = null
-  if (status.usbPc) target = '유선 연결 PC'
-  else if (status.pcConnected) target = hostsUi?.activeHost ? hostTitle(hostsUi.activeHost) : '블루투스 PC'
-  label.replaceChildren(
-    document.createTextNode('입력 대상: '),
-    target ? Object.assign(document.createElement('b'), { textContent: target }) : document.createTextNode('없음 (PC 미연결)'),
-  )
-}
+// "입력 대상" on every tab: a label, or a selector when several PCs are connected.
+let target = null
+const renderTarget = (status) => target?.render(status)
 
 function renderStatus(status) {
   const connected = Boolean(status)
@@ -132,7 +122,7 @@ function renderStatus(status) {
   usbMode?.render(status)
   pcPair?.render(status)
   // A PC just paired, connected, disconnected or was identified: refresh the paired list.
-  const hostKey = `${status.pcConnected}:${status.hostProfile}:${status.usbPc}:${status.activeConn}`
+  const hostKey = `${status.pcConnected}:${status.hostProfile}:${status.usbPc}:${status.activeConn}:${status.targetKind}`
   const paired = status.pairAction !== lastPairAction && status.pairAction === PAIR_ACTION.DONE
   if (paired || (lastHostKey && hostKey !== lastHostKey)) hostsUi?.refresh()
   lastHostKey = hostKey
@@ -385,7 +375,13 @@ function init() {
   wireKeepAwake()
   pcPair = setupPcPairing({ client, notify })
   usbMode = setupUsbMode({ client, notify })
-  hostsUi = setupHostsUi({ client, notify, onChange: () => renderTarget(client.status) })
+  hostsUi = setupHostsUi({
+    client,
+    notify,
+    onChange: () => renderTarget(client.status),
+    onSelect: (host) => target?.selectHost(host),
+  })
+  target = setupTarget({ client, sender, notify, getHosts: () => hostsUi.hosts })
   nickname = setupNickname({ client, notify, onChange: () => client.status && renderStatus(client.status) })
   hostsUi.render()
   live = setupLive({

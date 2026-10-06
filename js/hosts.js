@@ -1,6 +1,6 @@
 // Paired PC / tablet list: encrypted device -> phone messages and host commands.
 
-import { FRAME, SECURE_MSG, HOST_PROFILE } from './constants.js'
+import { FRAME, SECURE_MSG, HOST_PROFILE, TARGET } from './constants.js'
 
 const ADDR_LEN = 6
 const HOST_HEADER = 1 + 1 + 1 + ADDR_LEN + 1 + 1 + 1 // type, index, addr type, addr, profile, flags, name len
@@ -89,3 +89,10 @@ export function encodeSetHostAlias(addr, alias) {
 
 /** What to call a paired host: the user's alias, else its own name, else its address. */
 export const hostTitle = (host) => host.alias || host.name || formatHostAddr(host.addr)
+
+/** Choose which connected PC receives keystrokes. */
+export function encodeSelectTarget({ kind, addr }) {
+  if (kind === TARGET.BLE && !addr) throw new Error('블루투스 PC 주소가 필요합니다')
+  const bytes = kind === TARGET.BLE ? addrBytes(addr) : [0, 0, 0, 0, 0, 0, 0]
+  return Uint8Array.from([FRAME.SELECT_TARGET, kind, ...bytes])
+}

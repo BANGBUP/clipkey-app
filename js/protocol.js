@@ -129,5 +129,6 @@ export function parseStatus(view) {
     usbOtg: view.byteLength >= 15 ? (view.getUint8(14) & CAPS.USB_OTG) !== 0 : true,
     hostProfile: view.byteLength >= 16 ? view.getUint8(15) : 0,
     activeConn: view.byteLength >= 17 && view.getUint8(16) !== 0xff ? view.getUint8(16) : null,
+    targetKind: view.byteLength >= 18 ? view.getUint8(17) : null, // 0 none, 1 wired, 2 Bluetooth
   })
 }

@@ -14,6 +14,7 @@ export const ATT_ERROR = Object.freeze({
   QUEUE_FULL: 0x80,
   AUTH_FAILED: 0x82,
   LOCKED: 0x84,
+  BUSY: 0x85, // still typing
 })
 
 // Logical operations produced by the text converter.
@@ -49,6 +50,14 @@ export const FRAME = Object.freeze({
   SET_IME_SETTLE: 0x1d, // [0x1d, ms u16 LE]  wait after each 한/영 switch
   SET_NICKNAME: 0x1e, // [0x1e, utf8 x0..30]  shown in PC / tablet Bluetooth lists and the app
   SET_HOST_ALIAS: 0x1f, // [0x1f, addr type, addr x6, utf8 x0..30]  user label for a paired PC
+  SELECT_TARGET: 0x20, // [0x20, kind, addr type, addr x6]  which connected PC gets keystrokes
+})
+
+// Where keystrokes go (status byte 17 reports the link actually in use).
+export const TARGET = Object.freeze({
+  AUTO: 0, // wired PC if present, else the most recently connected Bluetooth PC
+  USB: 1, // wired PC (ESP32-S3 only)
+  BLE: 2, // one Bluetooth PC, by address
 })
 
 // Encrypted device -> phone messages on the SECURE characteristic.

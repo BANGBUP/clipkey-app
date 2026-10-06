@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Network first so updates show up immediately.
-const CACHE = 'clipkey-v4'
+const CACHE = 'clipkey-v5'
 const SHELL = [
   './',
   'index.html',
@@ -23,6 +23,7 @@ const SHELL = [
   'js/hostsui.js',
   'js/reconnect.js',
   'js/nickname.js',
+  'js/target.js',
 ]
 
 self.addEventListener('install', (event) => {

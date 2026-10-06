@@ -164,3 +164,6 @@ textarea:disabled { opacity: 0.5; }
 
 .target { margin: 0 0 6px; font-size: 15px; }
 .target b { color: var(--ok); }
+
+.target-select { font-weight: 600; color: var(--ok); }
+.host-row .row { flex-wrap: wrap; }
