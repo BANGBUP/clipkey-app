@@ -135,6 +135,7 @@ function renderStatus(status) {
   }
   const hostKind = status.hostProfile === HOST_PROFILE.APPLE ? ' (iPad/Mac)' : status.hostProfile ? ' (Windows)' : ''
   setChip('pc', status.pcConnected ? 'PC 연결됨' : 'PC 미연결', status.pcConnected ? 'on' : 'warn')
+  if (status.noSetupCode) setChip('link', `${deviceLabel()} · 기본 코드 사용 중`, 'warn')
   document.querySelector('[data-chip="pc"]').title = hostKind.trim()
   renderIme(status)
   setChip('caps', 'Caps Lock', status.capsLock ? 'warn' : '')
@@ -232,6 +233,21 @@ function askSetupCode() {
 }
 
 // The 연결 button: always show the chooser first (it needs the fresh tap), then connect.
+// A fresh ClipKey accepts the default code 0000 for its first phone only: set a real one now.
+async function askForSetupCode() {
+  const code = prompt('이 ClipKey는 아직 기본 설정 코드(0000)입니다.\n다른 폰을 등록할 때 쓸 새 설정 코드를 정하세요 (숫자 4~12자리):')
+  if (code === null) {
+    notify('설정 코드를 정하지 않았습니다. 설정 → 설정 코드 변경에서 정할 수 있습니다 (그 전에는 다른 폰을 등록할 수 없음)')
+    return
+  }
+  try {
+    await client.send(encodeSetSetupCode(code.trim()))
+    notify('설정 코드를 저장했습니다. 다른 폰은 이 코드로 등록합니다')
+  } catch (error) {
+    notify(`설정 코드 저장 실패: ${error.message}`)
+  }
+}
+
 async function connectFromButton(options = {}) {
   reconnector.stop() // no await: the chooser must open within the tap
   try {
@@ -251,6 +267,7 @@ async function connect(options = {}) {
     const status = await client.connect({ reuse: true, getSetupCode: askSetupCode, ...options })
     await pushSettings()
     if (client.justRegistered) nickname?.askAfterRegister()
+    if (status.noSetupCode) askForSetupCode()
     if (!status.pcConnected) notify('기기에 연결했습니다. PC가 아직 연결되지 않았습니다(USB 케이블 또는 설정 → PC 블루투스 연결 추가)')
   } catch (error) {
     if (error?.name === 'NotFoundError') return // chooser dismissed
