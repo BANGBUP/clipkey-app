@@ -53,6 +53,23 @@ h1 { font-size: 20px; margin: 0; }
 .chip.warn { border-color: var(--warn); color: var(--warn); }
 .chip.bad { border-color: var(--danger); color: var(--danger); }
 
+/* PC keyboard LEDs: always one row of five, however narrow the screen */
+.leds { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin: 0 0 8px; }
+.led {
+  display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 0;
+  font-size: 11px; padding: 2px 0; border-radius: 6px; white-space: nowrap; overflow: hidden;
+  border: 1px solid var(--border); color: var(--muted);
+}
+.led::before {
+  content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--border);
+}
+.led.on { border-color: var(--ok); color: var(--ok); }
+.led.on::before { background: var(--ok); box-shadow: 0 0 4px var(--ok); }
+.led[data-led="caps"].on { border-color: var(--warn); color: var(--warn); }
+.led[data-led="caps"].on::before { background: var(--warn); box-shadow: 0 0 4px var(--warn); }
+.led.unknown { opacity: 0.4; }
+
 .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); }
 .tab {
   flex: 1; padding: 10px; border: 0; background: none; color: var(--muted);

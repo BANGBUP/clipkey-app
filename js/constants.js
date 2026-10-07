@@ -159,6 +159,8 @@ export const HOST_LED = Object.freeze({
   NUM_LOCK: 0x01,
   CAPS_LOCK: 0x02,
   SCROLL_LOCK: 0x04,
+  COMPOSE: 0x08,
+  KANA: 0x10,
 })
 
 export const MOD = Object.freeze({

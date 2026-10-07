@@ -112,11 +112,24 @@ function renderIme(status) {
   badge.classList.toggle('english', Boolean(status) && !status.imeHangul)
 }
 
-// Num / Scroll Lock of the PC getting keystrokes (older firmware does not report them).
-function renderLockChips(status) {
-  for (const [name, label, on] of [['num', 'Num Lock', status?.numLock], ['scroll', 'Scroll Lock', status?.scrollLock]]) {
-    setChip(name, label, on ? 'on' : '')
-    document.querySelector(`[data-chip="${name}"]`).classList.toggle('hidden', on === undefined)
+// The five keyboard LEDs of the PC getting keystrokes, in one fixed row. Older firmware
+// reports only Caps Lock: the others are shown dimmed as unknown.
+const LEDS = [
+  ['num', 'Num Lock', (s) => s.numLock],
+  ['caps', 'Caps Lock', (s) => s.capsLock],
+  ['scroll', 'Scroll Lock', (s) => s.scrollLock],
+  ['compose', 'Compose', (s) => s.compose],
+  ['kana', 'Kana', (s) => s.kana],
+]
+
+function renderLeds(status) {
+  for (const [name, title, read] of LEDS) {
+    const el = document.querySelector(`[data-led="${name}"]`)
+    const on = status ? read(status) : undefined
+    el.classList.toggle('on', on === true)
+    el.classList.toggle('unknown', on === undefined)
+    el.title = `${title}: ${on === undefined ? '알 수 없음' : on ? '켜짐' : '꺼짐'}`
+    el.setAttribute('aria-label', el.title)
   }
 }
 
@@ -131,8 +144,7 @@ function renderStatus(status) {
     setChip('pc', 'PC')
     document.querySelector('[data-chip="pc"]').title = ''
     renderIme(null)
-    setChip('caps', 'Caps')
-    renderLockChips(null)
+    renderLeds(null)
     setChip('usb', 'USB')
     $('imeBelief').textContent = '-'
     renderKeepAwake(null)
@@ -148,8 +160,7 @@ function renderStatus(status) {
   setChip('pc', status.pcConnected ? 'PC 연결됨' : 'PC 미연결', status.pcConnected ? 'on' : 'warn')
   document.querySelector('[data-chip="pc"]').title = hostKind.trim()
   renderIme(status)
-  setChip('caps', 'Caps Lock', status.capsLock ? 'warn' : '')
-  renderLockChips(status)
+  renderLeds(status)
   if (status.hostMode) {
     setChip('usb', status.usbKeyboard ? 'USB 키보드 연결됨' : 'USB 키보드 없음', status.usbKeyboard ? 'on' : '')
   } else {

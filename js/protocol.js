@@ -144,5 +144,7 @@ export function parseStatus(view) {
     // Older firmware has no LED byte: undefined hides the Num / Scroll Lock chips.
     numLock: view.byteLength >= 19 ? (view.getUint8(18) & HOST_LED.NUM_LOCK) !== 0 : undefined,
     scrollLock: view.byteLength >= 19 ? (view.getUint8(18) & HOST_LED.SCROLL_LOCK) !== 0 : undefined,
+    compose: view.byteLength >= 19 ? (view.getUint8(18) & HOST_LED.COMPOSE) !== 0 : undefined,
+    kana: view.byteLength >= 19 ? (view.getUint8(18) & HOST_LED.KANA) !== 0 : undefined,
   })
 }
