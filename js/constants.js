@@ -60,6 +60,7 @@ export const FRAME = Object.freeze({
   OTA_DATA: 0x23, // [0x23, offset u32 LE, bytes...]
   OTA_END: 0x24, // [0x24] verify, activate, reboot
   OTA_ABORT: 0x25, // [0x25]
+  BYE: 0x26, // [0x26] leaving: the device drops the link itself (Android may otherwise keep it)
 })
 
 // Where keystrokes go (status byte 17 reports the link actually in use).

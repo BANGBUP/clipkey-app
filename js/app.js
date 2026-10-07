@@ -403,7 +403,7 @@ function wireSettings() {
   $('disconnectBtn').addEventListener('click', () => {
     userDisconnected = true
     reconnector.stop()
-    client.disconnect()
+    client.leave()
   })
 }
 
@@ -477,7 +477,7 @@ function init() {
   window.addEventListener('pagehide', () => {
     userDisconnected = true
     reconnector.stop()
-    client.disconnect()
+    client.leave() // best effort: the page may be gone before the goodbye is acknowledged
   })
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => undefined)

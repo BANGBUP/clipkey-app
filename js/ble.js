@@ -1,6 +1,6 @@
 // Web Bluetooth client for the ClipKey device.
 
-import { UUID, DEVICE_NAME, ATT_ERROR } from './constants.js'
+import { UUID, DEVICE_NAME, ATT_ERROR, FRAME } from './constants.js'
 import { parseStatus, parseAuthRead, encodeProve, encodeRegister } from './protocol.js'
 import { tokenStore, createToken, proveToken } from './auth.js'
 import { sealToken, deriveSessionKey, sealFrame, openDeviceFrame } from './crypto.js'
@@ -319,6 +319,19 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     if (device?.gatt?.connected) device.gatt.disconnect()
   }
 
+  /**
+   * Ends the session for good: asks the ClipKey to drop the link from its side first
+   * (Android can keep the radio link after the page disconnects, hiding the device from
+   * the chooser), then disconnects locally. Old firmware just ignores the request.
+   */
+  async function leave() {
+    if (chars && session) {
+      const bye = send(Uint8Array.of(FRAME.BYE)).catch(() => undefined)
+      await Promise.race([bye, new Promise((r) => setTimeout(r, 600))])
+    }
+    disconnect()
+  }
+
   /** Encrypts and writes one CMD frame. The counter is taken inside the chain so writes stay ordered. */
   async function send(frame) {
     if (!chars || !session) throw new Error('연결되어 있지 않습니다')
@@ -356,6 +369,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
 
   return Object.freeze({
     connect,
+    leave,
     chooseDevice,
     reconnectKnown,
     disconnect,
