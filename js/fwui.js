@@ -152,7 +152,7 @@ export function setupFirmwareUi({ client, notify }) {
     if (running) return
     try {
       const pkg = parseCkfw(await getBytes())
-      if (!confirm(`펌웨어 ${device.version} → ${pkg.version} 으로 업데이트할까요?\n약 2~3분 걸립니다. 그동안 앱을 닫거나 화면을 끄지 마세요.`)) return
+      if (!confirm(`펌웨어 ${device.version} → ${pkg.version} 으로 업데이트할까요?\n약 1~3분 걸립니다(휴대폰에 따라 다름). 그동안 앱을 닫거나 화면을 끄지 마세요.`)) return
       await upload(pkg)
     } catch (error) {
       notify(`펌웨어 업데이트 실패: ${error.message ?? error}`)
