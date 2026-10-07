@@ -4,6 +4,8 @@
 import {
   addToHistory,
   removeFromHistory,
+  togglePin,
+  clearUnpinned,
   upsertSnippet,
   removeSnippet,
   moveSnippet,
@@ -62,7 +64,7 @@ export function setupPhrases({ sendText, fillInput, notify }) {
     $('snippetList').replaceChildren(
       ...snippets.map((s) =>
         el('div', { className: 'phrase-row' }, [
-          el('button', { className: 'phrase-main', onclick: () => sendOnce(s.text) }, [
+          el('button', { className: 'phrase-main one-line', onclick: () => sendOnce(s.text) }, [
             el('strong', { textContent: s.title }),
             el('span', { className: 'preview', textContent: preview(s.text) }),
           ]),
@@ -107,10 +109,22 @@ export function setupPhrases({ sendText, fillInput, notify }) {
   function renderHistory() {
     $('historyEnabled').checked = historyOn
     $('historyCount').textContent = history.length ? `(${history.length})` : ''
-    $('historyClearBtn').classList.toggle('hidden', history.length === 0)
+    $('historyClearBtn').classList.toggle('hidden', !history.some((h) => !h.pinned))
     $('historyList').replaceChildren(
       ...history.map((h) =>
         el('div', { className: 'phrase-row' }, [
+          el('input', {
+            type: 'checkbox',
+            className: 'pin',
+            checked: h.pinned,
+            title: '고정 (맨 위에 두고 20개 제한에서 지우지 않음)',
+            ariaLabel: '고정',
+            onchange: () => {
+              history = togglePin(history, h.text)
+              persist(historyStore, history)
+              renderHistory()
+            },
+          }),
           el('button', { className: 'phrase-main', title: '입력칸에 넣기', onclick: () => fillInput(h.text) }, [
             el('span', { className: 'preview', textContent: preview(h.text) }),
           ]),
@@ -135,15 +149,15 @@ export function setupPhrases({ sendText, fillInput, notify }) {
     historyOn = e.target.checked
     persist(historyFlag, historyOn)
     notify(historyOn ? `보낸 텍스트를 최근 ${HISTORY_LIMIT}개까지 기록합니다` : '이제부터 기록하지 않습니다')
-    if (!historyOn && history.length > 0 && confirm('지금까지의 기록도 지울까요?')) {
-      history = []
+    if (!historyOn && history.some((h) => !h.pinned) && confirm('지금까지의 기록도 지울까요? (고정한 항목은 남습니다)')) {
+      history = clearUnpinned(history)
       persist(historyStore, history)
       renderHistory()
     }
   })
   $('historyClearBtn').addEventListener('click', () => {
-    if (!confirm('최근 보낸 텍스트 기록을 모두 지울까요?')) return
-    history = []
+    if (!confirm('기록을 지울까요? (고정한 항목은 남습니다)')) return
+    history = clearUnpinned(history)
     persist(historyStore, history)
     renderHistory()
   })

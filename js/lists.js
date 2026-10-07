@@ -4,16 +4,31 @@
 export const HISTORY_LIMIT = 20
 const TITLE_FROM_TEXT = 18
 
-/** Newest first, no duplicates, no blank entries, at most HISTORY_LIMIT. */
+// Pinned entries first, then newest first. Pinned ones don't count toward the limit.
+function arrange(entries) {
+  const byTime = (a, b) => b.at - a.at
+  const pinned = entries.filter((e) => e.pinned).sort(byTime).slice(0, HISTORY_LIMIT)
+  const rest = entries.filter((e) => !e.pinned).sort(byTime).slice(0, HISTORY_LIMIT)
+  return [...pinned, ...rest]
+}
+
+/** No duplicates or blank entries; re-sending keeps a pinned text pinned. */
 export function addToHistory(history, text, at = Date.now()) {
   if (!String(text ?? '').trim()) return history
-  const rest = history.filter((e) => e.text !== text)
-  return [{ text, at }, ...rest].slice(0, HISTORY_LIMIT)
+  const pinned = history.some((e) => e.text === text && e.pinned)
+  return arrange([{ text, at, pinned }, ...history.filter((e) => e.text !== text)])
 }
 
 export function removeFromHistory(history, text) {
   return history.filter((e) => e.text !== text)
 }
+
+/** Pin ("keep for a while") or unpin one entry. */
+export function togglePin(history, text) {
+  return arrange(history.map((e) => (e.text === text ? { ...e, pinned: !e.pinned } : e)))
+}
+
+export const clearUnpinned = (history) => history.filter((e) => e.pinned)
 
 const defaultId = () => crypto.randomUUID()
 
@@ -45,7 +60,9 @@ const isString = (v) => typeof v === 'string'
 
 /** Keeps only well-formed history entries (storage may hold anything). */
 export const validHistory = (v) =>
-  Array.isArray(v) ? v.filter((e) => e && isString(e.text)).map((e) => ({ text: e.text, at: Number(e.at) || 0 })) : []
+  Array.isArray(v)
+    ? v.filter((e) => e && isString(e.text)).map((e) => ({ text: e.text, at: Number(e.at) || 0, pinned: e.pinned === true }))
+    : []
 
 /** Keeps only well-formed snippets. */
 export const validSnippets = (v) =>

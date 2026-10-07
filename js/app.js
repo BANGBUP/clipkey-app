@@ -85,6 +85,14 @@ function deviceLabel() {
 let target = null
 const renderTarget = (status) => target?.render(status)
 
+// Like the Windows IME indicator: "가" = Korean, "A" = English (what the ClipKey assumes).
+function renderIme(status) {
+  const badge = $('imeBadge')
+  $('imeBtn').disabled = !status
+  badge.textContent = status ? (status.imeHangul ? '가' : 'A') : '-'
+  badge.classList.toggle('english', Boolean(status) && !status.imeHangul)
+}
+
 function renderStatus(status) {
   const connected = Boolean(status)
   setChip('link', connected ? `${deviceLabel()} 연결됨` : '기기 미연결', connected ? 'on' : 'bad')
@@ -93,8 +101,8 @@ function renderStatus(status) {
   live?.setEnabled(connected)
   if (!connected) {
     setChip('pc', 'PC')
-    setChip('ime', '한/영', 'chip-btn')
-    $('imeChip').disabled = true
+    document.querySelector('[data-chip="pc"]').title = ''
+    renderIme(null)
     setChip('caps', 'Caps')
     setChip('usb', 'USB')
     $('imeBelief').textContent = '-'
@@ -108,9 +116,9 @@ function renderStatus(status) {
     return
   }
   const hostKind = status.hostProfile === HOST_PROFILE.APPLE ? ' (iPad/Mac)' : status.hostProfile ? ' (Windows)' : ''
-  setChip('pc', status.pcConnected ? `PC 연결됨${hostKind}` : 'PC 미연결', status.pcConnected ? 'on' : 'warn')
-  setChip('ime', status.imeHangul ? '한글 모드' : '영문 모드', 'on chip-btn')
-  $('imeChip').disabled = false
+  setChip('pc', status.pcConnected ? 'PC 연결됨' : 'PC 미연결', status.pcConnected ? 'on' : 'warn')
+  document.querySelector('[data-chip="pc"]').title = hostKind.trim()
+  renderIme(status)
   setChip('caps', 'Caps Lock', status.capsLock ? 'warn' : '')
   if (status.hostMode) {
     setChip('usb', status.usbKeyboard ? 'USB 키보드 연결됨' : 'USB 키보드 없음', status.usbKeyboard ? 'on' : '')
@@ -135,7 +143,7 @@ function renderStatus(status) {
 
 const client = createClient({
   onStatus: renderStatus,
-  onDisconnect: () => {
+  onDisconnect: ({ wasConnected }) => {
     nickname?.reset()
     renderStatus(null)
     usbMode?.onDisconnect()
@@ -143,6 +151,8 @@ const client = createClient({
       suppressNextReconnect = false
       return
     }
+    // A connect attempt that failed half-way is not an outage: don't start retrying it.
+    if (!wasConnected || client.connecting) return
     if (userDisconnected || !client.deviceId || !tokenStore.load(client.deviceId)) {
       notify('기기 연결이 끊겼습니다')
       return
@@ -199,7 +209,7 @@ function askSetupCode() {
 }
 
 async function connect(options = {}) {
-  reconnector.stop() // a manual connect replaces any background retry
+  await reconnector.stop() // a manual connect replaces any background retry (and waits for it)
   userDisconnected = false
   try {
     const status = await client.connect({ reuse: client.hasDevice, getSetupCode: askSetupCode, ...options })
@@ -345,10 +355,10 @@ function wireSettings() {
     if (!client.connected || !status) return notify('먼저 기기에 연결하세요')
     client
       .send(encodeSetIme(!status.imeHangul))
-      .then(() => notify(`기기 기억을 ${status.imeHangul ? '영문' : '한글'}으로 맞췄습니다`))
+      .then(() => notify(`한/영 상태를 ${status.imeHangul ? '영문(A)' : '한글(가)'}으로 맞췄습니다`))
       .catch((e) => notify(e.message))
   }
-  $('imeChip').addEventListener('click', flipImeBelief)
+  $('imeBtn').addEventListener('click', flipImeBelief)
   $('imeSyncBtn').addEventListener('click', flipImeBelief)
   $('reregisterBtn').addEventListener('click', () => {
     reconnector.stop()
@@ -412,7 +422,7 @@ function init() {
   client
     .reconnectKnown()
     .then((status) => status && pushSettings())
-    .catch(() => undefined) // silent: user can press "연결"
+    .catch(() => client.disconnect()) // silent, but never leave a half-open link behind
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => undefined)
 }

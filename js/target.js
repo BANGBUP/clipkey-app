@@ -45,17 +45,18 @@ export function setupTarget({ client, sender, notify, getHosts }) {
 
   function render(status) {
     lastStatus = status
-    label.classList.toggle('hidden', !status)
-    if (!status) return
+    if (!status) {
+      label.replaceChildren()
+      return
+    }
     const options = candidates(status)
-    const prefix = document.createTextNode('입력 대상: ')
     if (options.length < 2) shownKey = ''
     if (options.length === 0) {
-      label.replaceChildren(prefix, document.createTextNode(status.pcConnected ? '블루투스 PC' : '없음 (PC 미연결)'))
+      label.replaceChildren(document.createTextNode(status.pcConnected ? '블루투스 PC' : ''))
       return
     }
     if (options.length === 1) {
-      label.replaceChildren(prefix, Object.assign(document.createElement('b'), { textContent: options[0].title }))
+      label.replaceChildren(document.createTextNode(options[0].title))
       return
     }
     // Status updates arrive often while typing: don't rebuild (and close) an open selector.
@@ -71,7 +72,7 @@ export function setupTarget({ client, sender, notify, getHosts }) {
       selectEl.blur() // let the next status update redraw it with the real target
       select(options.find((o) => o.value === selectEl.value))
     })
-    label.replaceChildren(prefix, selectEl)
+    label.replaceChildren(selectEl)
   }
 
   return Object.freeze({

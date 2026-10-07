@@ -13,10 +13,14 @@ export function createReconnector({
 }) {
   let running = null
   let stopped = false
+  let wake = () => {} // resolves the current wait early when stop() is called
+
+  const interruptibleSleep = (ms) =>
+    Promise.race([sleep(ms), new Promise((resolve) => (wake = resolve))])
 
   async function loop() {
     for (let attempt = 0; attempt < maxAttempts && !stopped; attempt += 1) {
-      await sleep(delays[Math.min(attempt, delays.length - 1)])
+      await interruptibleSleep(delays[Math.min(attempt, delays.length - 1)])
       if (stopped) break
       try {
         await connect()
@@ -41,8 +45,11 @@ export function createReconnector({
       }
       return running
     },
+    /** Stops retrying; resolves once any attempt in flight has finished (and been dropped). */
     stop() {
       stopped = true
+      wake()
+      return running ?? Promise.resolve(false)
     },
     get running() {
       return running !== null

@@ -21,13 +21,17 @@
     </div>
     <div class="chips" id="chips">
       <span class="chip" data-chip="link">기기 미연결</span>
-      <span class="chip" data-chip="pc">PC</span>
-      <button type="button" class="chip chip-btn" data-chip="ime" id="imeChip" title="PC 화면의 입력 상태와 다르면 누르세요">한/영</button>
       <span class="chip" data-chip="caps">Caps</span>
       <span class="chip" data-chip="usb">USB</span>
     </div>
-    <p class="target hidden" id="targetLabel"></p>
-    <p class="hint ime-hint" id="imeHint">위 <b>한글/영문</b> 표시가 PC·태블릿의 실제 입력 상태와 다르면 눌러서 맞추세요 (키는 입력되지 않음).</p>
+    <div class="pc-row">
+      <span class="chip" data-chip="pc">PC</span>
+      <span class="target" id="targetLabel"></span>
+      <button type="button" class="ime-btn" id="imeBtn" disabled
+        title="PC 화면의 한/영 표시와 다르면 눌러서 맞추세요 (키는 입력되지 않음)">
+        한/영 전환 <span class="ime-badge" id="imeBadge">-</span>
+      </button>
+    </div>
   </header>
 
   <nav class="tabs" role="tablist">
@@ -53,10 +57,11 @@
 
       <details class="phrases" id="historyBox">
         <summary><strong>최근 보낸 텍스트</strong> <span class="hint" id="historyCount"></span></summary>
-        <label class="check"><input type="checkbox" id="historyEnabled"> 보낸 텍스트를 이 폰에 기록 (최근 20개, 클립보드 바로 타이핑은 제외)</label>
-        <p class="hint">비밀번호처럼 남기면 안 되는 내용을 보낼 때는 기록을 끄세요. 다른 앱에서 복사한 이전 항목은 입력칸을 누른 뒤 키보드의 클립보드 버튼에서 고를 수 있습니다.</p>
+        <div class="row history-head">
+          <label class="check grow"><input type="checkbox" id="historyEnabled"> 보낸 텍스트 이 폰에 기록</label>
+          <button id="historyClearBtn" class="btn small danger">기록 지우기</button>
+        </div>
         <div id="historyList" class="phrase-list"></div>
-        <button id="historyClearBtn" class="btn small danger">기록 모두 지우기</button>
       </details>
 
       <div id="progressBox" class="progress hidden">

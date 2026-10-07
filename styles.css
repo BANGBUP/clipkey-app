@@ -151,10 +151,6 @@ textarea:disabled { opacity: 0.5; }
 .host-row.active { border-color: var(--ok); }
 .host-main { display: flex; flex-direction: column; }
 
-.chip-btn { font: inherit; font-size: 12px; background: none; cursor: pointer; }
-.chip-btn:not(:disabled)::after { content: ' ⇄'; }
-.chip-btn:active { background: var(--border); }
-.ime-hint { margin: 0 0 6px; }
 
 .text-input {
   font: inherit; color: var(--text); background: var(--surface);
@@ -185,3 +181,29 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 .snippet-actions { align-items: center; margin-top: 8px; }
 
 .order-last { order: 99; }
+
+/* PC row: connection, where text goes, and the 한/영 state like the Windows IME icon */
+.pc-row { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; min-height: 34px; }
+.pc-row .target { flex: 1; min-width: 0; font-weight: 600; color: var(--ok);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-row .target select { max-width: 100%; }
+.ime-btn {
+  display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 14px;
+  padding: 4px 6px 4px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); white-space: nowrap;
+}
+.ime-btn:active { background: var(--border); }
+.ime-btn:disabled { opacity: 0.5; }
+.ime-badge {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 6px;
+  font-weight: 700; background: var(--primary); color: var(--primary-text);
+}
+.ime-badge.english { background: var(--muted); }
+
+/* One-line phrase rows: title | content… */
+.phrase-main.one-line { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; align-items: center; padding: 8px 12px; }
+.phrase-main.one-line strong, .phrase-main.one-line .preview {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.phrase-row .pin { width: 22px; height: 22px; align-self: center; flex: none; }
+.history-head { align-items: center; }

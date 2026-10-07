@@ -7,6 +7,14 @@ import { sealToken, deriveSessionKey, sealFrame, openDeviceFrame } from './crypt
 import { parseSecureMessage } from './hosts.js'
 
 const STATUS_WAIT_MS = 1500
+const GATT_RETRY_DELAY_MS = 700
+
+// Android often fails the first GATT step after a reconnect; those are worth one retry.
+// Our own errors (wrong code, not registered, cancelled) are plain Errors and are not.
+const isTransientGattError = (error) =>
+  typeof DOMException !== 'undefined' &&
+  error instanceof DOMException &&
+  !['NotFoundError', 'SecurityError', 'NotAllowedError', 'AbortError'].includes(error.name)
 const QUEUE_FULL_RETRIES = 20
 
 // Chrome reports ATT application errors only inside the message text.
@@ -14,6 +22,10 @@ function hasAttError(error, code) {
   const hex = code.toString(16)
   return new RegExp(`0x0*${hex}(?![0-9a-f])`, 'i').test(String(error?.message))
 }
+
+// The device rejects AUTH writes with application ATT errors (0x80..0x9f). Anything else is a
+// link problem and must stay a DOMException so the connect retry can handle it.
+const isDeviceRejection = (error) => /0x0*(8[0-9a-f]|9[0-9a-f])(?![0-9a-f])/i.test(String(error?.message))
 
 function describeRegisterError(error) {
   if (hasAttError(error, ATT_ERROR.LOCKED)) return '틀린 코드가 반복되어 등록이 잠시 잠겼습니다. 잠시 후 다시 시도하세요'
@@ -64,12 +76,13 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
   }
 
   const handleDisconnect = () => {
+    const wasConnected = session !== null
     chars = null
     status = null
     session = null
     statusWaiters.forEach((resolve) => resolve(null))
     statusWaiters.clear()
-    onDisconnect()
+    onDisconnect({ wasConnected })
   }
 
   // Web Bluetooth rejects overlapping GATT operations, so every op goes through one chain.
@@ -94,13 +107,19 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     })
 
   async function readStatus() {
-    const view = await serialize(() => chars.status.readValue())
+    const view = await serialize(() => linkChars().status.readValue())
     status = parseStatus(view)
     onStatus(status)
     return status
   }
 
-  const readAuth = async () => parseAuthRead(await serialize(() => chars.auth.readValue()))
+  // During a connect the link can drop between steps (handleDisconnect clears `chars`).
+  const linkChars = () => {
+    if (!chars) throw new DOMException('블루투스 연결이 끊겼습니다', 'NetworkError')
+    return chars
+  }
+
+  const readAuth = async () => parseAuthRead(await serialize(() => linkChars().auth.readValue()))
 
   async function register(code) {
     const { nonce, devicePub } = await readAuth()
@@ -108,11 +127,14 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     const token = createToken()
     const sealed = await sealToken({ devicePub, nonce, token, code })
     try {
-      await serialize(() => chars.auth.writeValueWithResponse(encodeRegister(sealed)))
+      await serialize(() => linkChars().auth.writeValueWithResponse(encodeRegister(sealed)))
     } catch (error) {
+      // Never retried: the code may have reached the device, and every wrong try counts
+      // toward its lockout (Chrome does not always include the ATT code in the message).
       throw new Error(describeRegisterError(error))
     }
     tokenStore.save(device.id, token)
+    registeredThisConnect = true
     return { token, nonce }
   }
 
@@ -120,9 +142,12 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     const { nonce } = await readAuth()
     const hmac = await proveToken(token, nonce)
     try {
-      await serialize(() => chars.auth.writeValueWithResponse(encodeProve(hmac)))
+      await serialize(() => linkChars().auth.writeValueWithResponse(encodeProve(hmac)))
     } catch (error) {
-      throw new Error(`인증 실패: 이 폰이 기기에 등록되어 있지 않습니다. 설정에서 다시 등록하세요 (${error.message})`)
+      const hint = `인증 실패: 연결 문제이거나 이 폰이 기기에 등록되어 있지 않습니다. 계속되면 설정에서 다시 등록하세요 (${error.message})`
+      // Proving is safe to retry (fresh nonce each time): keep link errors retryable.
+      if (!isDeviceRejection(error) && error instanceof DOMException) throw new DOMException(hint, error.name)
+      throw new Error(hint)
     }
     return { token, nonce }
   }
@@ -141,15 +166,27 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     const { token, nonce } = creds
     session = { key: await deriveSessionKey(token, nonce), counter: 1 }
     lastDeviceCounter = -1
-    chars.secure.oncharacteristicvaluechanged = handleSecure
-    await serialize(() => chars.secure.startNotifications())
+    linkChars().secure.oncharacteristicvaluechanged = handleSecure
+    await serialize(() => linkChars().secure.startNotifications())
     const s = await readStatus()
     if (!s.authed) throw new Error('인증 실패')
     return s
   }
 
   /** getSetupCode: async () => string | null, asked only when this phone must register. */
-  async function connect({ reuse = false, forceRegister = false, getSetupCode = async () => null } = {}) {
+  let connecting = null // the one connect in progress (overlapping GATT setups break Android)
+  let registeredThisConnect = false // token already saved: a retry must not register again
+
+  // Leaves no half-open link behind: the app must never think "disconnected" while the
+  // phone still holds a GATT connection (the next connect would then fail with GATT errors).
+  function dropLink() {
+    chars = null
+    session = null
+    status = null
+    if (device?.gatt?.connected) device.gatt.disconnect()
+  }
+
+  async function connectOnce({ reuse, forceRegister, getSetupCode }) {
     if (!isSupported()) throw new Error('이 브라우저는 Web Bluetooth를 지원하지 않습니다 (안드로이드 크롬 사용)')
     if (!reuse || !device) {
       device = await navigator.bluetooth.requestDevice({
@@ -158,8 +195,43 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
       })
       device.ongattserverdisconnected = handleDisconnect
     }
+    registeredThisConnect = false
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await openLink(forceRegister && !registeredThisConnect, getSetupCode)
+      } catch (error) {
+        dropLink()
+        if (attempt >= 2 || !isTransientGattError(error)) throw error
+        await new Promise((r) => setTimeout(r, GATT_RETRY_DELAY_MS))
+      }
+    }
+  }
+
+  /**
+   * One connect at a time. A plain reconnect joins one already running; a chooser connect or
+   * a re-register waits for it to finish and then runs on its own. An already working link
+   * is kept for plain reconnects.
+   */
+  async function connect({ reuse = false, forceRegister = false, getSetupCode = async () => null } = {}) {
+    const plain = reuse && !forceRegister
+    if (connecting) {
+      if (plain) return connecting
+      await connecting.catch(() => undefined)
+    }
+    if (plain && chars && session && device?.gatt?.connected) return status
+    if (!connecting) {
+      connecting = connectOnce({ reuse, forceRegister, getSetupCode }).finally(() => {
+        connecting = null
+      })
+    }
+    return connecting
+  }
+
+  async function openLink(forceRegister, getSetupCode) {
+    if (device.gatt.connected) device.gatt.disconnect() // start from a clean link
     const server = await device.gatt.connect()
     const service = await server.getPrimaryService(UUID.SERVICE)
+    if (!device.gatt.connected) throw new DOMException('블루투스 연결이 끊겼습니다', 'NetworkError')
     chars = {
       cmd: await service.getCharacteristic(UUID.CMD),
       status: await service.getCharacteristic(UUID.STATUS),
@@ -167,7 +239,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
       secure: await service.getCharacteristic(UUID.SECURE),
     }
     chars.status.oncharacteristicvaluechanged = handleStatus
-    await chars.status.startNotifications()
+    await linkChars().status.startNotifications()
     return authenticate(forceRegister, getSetupCode)
   }
 
@@ -244,6 +316,9 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     },
     get justRegistered() {
       return justRegistered
+    },
+    get connecting() {
+      return connecting !== null
     },
     get status() {
       return status
