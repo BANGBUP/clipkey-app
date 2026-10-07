@@ -43,8 +43,21 @@ export function parseSecureMessage(bytes) {
     case SECURE_MSG.DEVICE_INFO: {
       const len = bytes[1] ?? 0
       if (bytes.length < 2 + len) throw new Error('기기 정보 길이 오류')
-      return { type: SECURE_MSG.DEVICE_INFO, nickname: new TextDecoder().decode(bytes.slice(2, 2 + len)) }
+      const decode = (from, n) => new TextDecoder().decode(bytes.slice(from, from + n))
+      // Newer firmware appends version and chip (older: nickname only).
+      const verAt = 2 + len
+      const verLen = bytes.length > verAt ? bytes[verAt] : 0
+      const chipAt = verAt + 1 + verLen
+      return {
+        type: SECURE_MSG.DEVICE_INFO,
+        nickname: decode(2, len),
+        version: decode(verAt + 1, verLen),
+        chip: bytes.length > chipAt ? bytes[chipAt] : null,
+      }
     }
+    case SECURE_MSG.OTA_RESULT:
+      if (bytes.length < 3) throw new Error('업데이트 결과 길이 오류')
+      return { type: SECURE_MSG.OTA_RESULT, phase: bytes[1], result: bytes[2] }
     case SECURE_MSG.PAIR_PROMPT: {
       if (bytes.length < 6) throw new Error('페어링 요청 길이 오류')
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)

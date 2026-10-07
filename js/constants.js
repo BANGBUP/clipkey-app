@@ -15,6 +15,10 @@ export const ATT_ERROR = Object.freeze({
   AUTH_FAILED: 0x82,
   LOCKED: 0x84,
   BUSY: 0x85, // still typing
+  NO_SETUP_CODE: 0x86, // the device has no setup code yet (set it over USB)
+  OTA_REJECTED: 0x87, // bad signature / wrong chip / bad hash
+  OTA_OFFSET: 0x88,
+  OTA_FAILED: 0x89,
 })
 
 // Logical operations produced by the text converter.
@@ -51,6 +55,11 @@ export const FRAME = Object.freeze({
   SET_NICKNAME: 0x1e, // [0x1e, utf8 x0..30]  shown in PC / tablet Bluetooth lists and the app
   SET_HOST_ALIAS: 0x1f, // [0x1f, addr type, addr x6, utf8 x0..30]  user label for a paired PC
   SELECT_TARGET: 0x20, // [0x20, kind, addr type, addr x6]  which connected PC gets keystrokes
+  SET_SETUP_CODE: 0x21, // [0x21, ascii digits x4..12]
+  OTA_BEGIN: 0x22, // [0x22, .ckfw header x132]
+  OTA_DATA: 0x23, // [0x23, offset u32 LE, bytes...]
+  OTA_END: 0x24, // [0x24] verify, activate, reboot
+  OTA_ABORT: 0x25, // [0x25]
 })
 
 // Where keystrokes go (status byte 17 reports the link actually in use).
@@ -65,7 +74,8 @@ export const SECURE_MSG = Object.freeze({
   PAIR_PROMPT: 0x01, // [0x01, state, passkey u32 LE]
   HOST: 0x02, // [0x02, index, addr type, addr x6, profile, flags, name len, name, alias len, alias]
   HOSTS_END: 0x03, // [0x03, total]
-  DEVICE_INFO: 0x04, // [0x04, nickname len, nickname utf8]
+  DEVICE_INFO: 0x04, // [0x04, nick len, nick, version len, version, chip]
+  OTA_RESULT: 0x05, // [0x05, phase 1 begin | 2 end, result 0 ok | 1 rejected | 2 failed]
 })
 
 // How a paired computer switches Korean / English (and its typing quirks).
@@ -133,6 +143,7 @@ export const STATUS_FLAG = Object.freeze({
 // STATUS caps byte
 export const CAPS = Object.freeze({
   USB_OTG: 1 << 0, // ESP32-S3: wired keyboard / USB host modes exist (original ESP32: Bluetooth only)
+  NO_SETUP_CODE: 1 << 1, // phones cannot register until a setup code is set over USB
 })
 
 export const MOD = Object.freeze({

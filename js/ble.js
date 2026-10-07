@@ -56,6 +56,9 @@ function hasAttError(error, code) {
 const isDeviceRejection = (error) => /0x0*(8[0-9a-f]|9[0-9a-f])(?![0-9a-f])/i.test(String(error?.message))
 
 function describeRegisterError(error) {
+  if (hasAttError(error, ATT_ERROR.NO_SETUP_CODE)) {
+    return '이 ClipKey에는 아직 설정 코드가 없습니다. PC에 USB로 연결해 설정 코드를 넣어야 합니다 (scripts/provision.py)'
+  }
   if (hasAttError(error, ATT_ERROR.LOCKED)) return '틀린 코드가 반복되어 등록이 잠시 잠겼습니다. 잠시 후 다시 시도하세요'
   return '등록 실패: 설정 코드가 틀렸거나, 틀린 시도가 반복되어 잠겼습니다'
 }

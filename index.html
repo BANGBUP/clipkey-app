@@ -146,6 +146,27 @@
         <p class="hint">처음 연결할 때 Windows / iPad·Mac을 자동으로 구분해 한/영 전환 방법과 입력 속도를 맞춥니다. 틀리면 여기서 바꾸세요. (최대 6대 기억, 동시 연결 2대)</p>
         <div id="hostList" class="host-list"></div>
       </div>
+      <div class="field">
+        <div class="row"><strong class="grow">펌웨어</strong><span id="fwInfo" class="hint">-</span></div>
+        <div class="row">
+          <button id="fwCheckBtn" class="btn small" disabled>최신 버전으로 업데이트</button>
+          <button id="fwFileBtn" class="btn small" disabled>파일로 업데이트</button>
+          <input type="file" id="fwFile" accept=".ckfw" hidden>
+        </div>
+        <div id="fwProgress" class="progress hidden">
+          <progress id="fwBar" max="1" value="0"></progress>
+          <span id="fwText"></span>
+          <button id="fwCancelBtn" class="btn danger small">취소</button>
+        </div>
+      </div>
+      <div class="field">
+        <strong>설정 코드 변경</strong>
+        <div class="row">
+          <input id="setupCodeInput" class="text-input grow" type="password" inputmode="numeric" maxlength="12"
+            placeholder="새 코드 (숫자 4~12자리)" autocomplete="off">
+          <button id="setupCodeBtn" class="btn">변경</button>
+        </div>
+      </div>
       <label class="check"><input type="checkbox" id="debugEnabled"> 디버그 로그 표시 (화면 아래, 앱 시작부터 기록)</label>
       <div class="field">
         <p class="hint">폰 등록에는 기기의 설정 코드가 필요합니다. 기기를 초기화하려면 BOOT 버튼을 5초 누르세요(등록된 폰·PC 모두 삭제).</p>

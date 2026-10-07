@@ -11,6 +11,7 @@ import { setupNickname } from './nickname.js'
 import { setupTarget } from './target.js'
 import { setupPhrases } from './phrases.js'
 import { setupDebug } from './debug.js'
+import { setupFirmwareUi } from './fwui.js'
 import { appLog, describeError } from './log.js'
 
 import { createReconnector } from './reconnect.js'
@@ -21,6 +22,7 @@ import {
   encodeSetToggleKey,
   encodeSetDelay,
   encodeSetImeSettle,
+  encodeSetSetupCode,
   encodeSetKeepAwake,
   keepAwakeKeyId,
 } from './protocol.js'
@@ -77,6 +79,7 @@ let pcPair = null
 let hostsUi = null
 let nickname = null
 let phrases = null
+let firmwareUi = null
 let userDisconnected = false // the user pressed 연결 끊기: don't auto-reconnect
 let suppressNextReconnect = false // a disconnect we caused on purpose (re-register)
 let lastPairAction = null
@@ -154,6 +157,7 @@ const client = createClient({
   onDisconnect: ({ wasConnected }) => {
     log(`onDisconnect wasConnected=${wasConnected} connecting=${client.connecting} user=${userDisconnected}`)
     nickname?.reset()
+    firmwareUi?.reset()
     renderStatus(null)
     usbMode?.onDisconnect()
     if (suppressNextReconnect) {
@@ -177,6 +181,7 @@ const client = createClient({
     pcPair?.onSecure(msg)
     hostsUi?.onSecure(msg)
     nickname?.onSecure(msg)
+    firmwareUi?.onSecure(msg)
   },
 })
 
@@ -426,6 +431,18 @@ function init() {
   })
   target = setupTarget({ client, sender, notify, getHosts: () => hostsUi.hosts })
   setupDebug({ notify })
+  firmwareUi = setupFirmwareUi({ client, notify })
+  $('setupCodeBtn').addEventListener('click', async () => {
+    const code = $('setupCodeInput').value
+    if (!client.connected) return notify('먼저 기기에 연결하세요')
+    try {
+      await client.send(encodeSetSetupCode(code))
+      $('setupCodeInput').value = ''
+      notify('설정 코드를 바꿨습니다. 이미 등록된 폰은 그대로 쓸 수 있습니다')
+    } catch (error) {
+      notify(`설정 코드 변경 실패: ${error.message}`)
+    }
+  })
   phrases = setupPhrases({ sendText, fillInput: (text) => ($('sendText').value = text), notify })
   nickname = setupNickname({ client, notify, onChange: () => client.status && renderStatus(client.status) })
   hostsUi.render()

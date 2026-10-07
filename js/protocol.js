@@ -78,6 +78,12 @@ export function encodeSetImeSettle(ms) {
   return Uint8Array.of(FRAME.SET_IME_SETTLE, v & 0xff, v >> 8)
 }
 
+/** New phone setup code (4-12 digits) for this ClipKey. */
+export function encodeSetSetupCode(code) {
+  if (!/^\d{4,12}$/.test(code)) throw new Error('설정 코드는 숫자 4~12자리입니다')
+  return Uint8Array.from([FRAME.SET_SETUP_CODE, ...new TextEncoder().encode(code)])
+}
+
 export function encodeProve(hmac) {
   if (hmac.length !== 32) throw new Error('HMAC 길이는 32바이트여야 합니다')
   return Uint8Array.from([AUTH_FRAME.PROVE, ...hmac])
@@ -127,6 +133,7 @@ export function parseStatus(view) {
     pairAction: view.byteLength >= 14 ? view.getUint8(9) : PAIR_ACTION.NONE,
     passkey: view.byteLength >= 14 ? view.getUint32(10, true) : 0,
     usbOtg: view.byteLength >= 15 ? (view.getUint8(14) & CAPS.USB_OTG) !== 0 : true,
+    noSetupCode: view.byteLength >= 15 && (view.getUint8(14) & CAPS.NO_SETUP_CODE) !== 0,
     hostProfile: view.byteLength >= 16 ? view.getUint8(15) : 0,
     activeConn: view.byteLength >= 17 && view.getUint8(16) !== 0xff ? view.getUint8(16) : null,
     targetKind: view.byteLength >= 18 ? view.getUint8(17) : null, // 0 none, 1 wired, 2 Bluetooth

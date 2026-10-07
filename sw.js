@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Network first so updates show up immediately.
-const CACHE = 'clipkey-v7'
+const CACHE = 'clipkey-v8'
 const SHELL = [
   './',
   'index.html',
@@ -28,6 +28,8 @@ const SHELL = [
   'js/phrases.js',
   'js/log.js',
   'js/debug.js',
+  'js/firmware.js',
+  'js/fwui.js',
 ]
 
 self.addEventListener('install', (event) => {
@@ -45,6 +47,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
+  if (new URL(event.request.url).pathname.includes('/firmware/')) return // updates: network only
   event.respondWith(
     fetch(event.request)
       .then((res) => {
