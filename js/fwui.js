@@ -27,6 +27,7 @@ export function setupFirmwareUi({ client, notify }) {
   let running = false
   let cancelled = false
   let waiting = null // { phase, resolve } for the next OTA_RESULT
+  let latest = null // { version, file } from the site manifest for this chip, once fetched
 
   function awaitResult(phase, timeoutMs) {
     return new Promise((resolve, reject) => {
@@ -46,11 +47,39 @@ export function setupFirmwareUi({ client, notify }) {
     })
   }
 
+  const updateAvailable = () => Boolean(device?.version && latest && compareVersions(latest.version, device.version) > 0)
+
   function renderInfo() {
-    $('fwInfo').textContent = device?.version ? `${device.version} (${chipName(device.chip ?? 0)})` : '-'
+    let text = '-'
+    if (device?.version) {
+      const state = !latest ? '' : updateAvailable() ? ` · 새 버전 ${latest.version} 있음` : ' · 최신'
+      text = `${device.version} (${chipName(device.chip ?? 0)})${state}`
+    }
+    $('fwInfo').textContent = text
+    $('fwInfo').classList.toggle('update-available', updateAvailable())
     const usable = client.connected && device?.chip !== null && device?.chip !== undefined && !running
     $('fwCheckBtn').disabled = !usable
+    $('fwCheckBtn').classList.toggle('primary', updateAvailable())
+    $('fwCheckBtn').textContent = updateAvailable() ? `${latest.version}으로 업데이트` : '최신 버전으로 업데이트'
     $('fwFileBtn').disabled = !usable
+  }
+
+  async function fetchLatest() {
+    const manifest = await (await fetch(MANIFEST_URL, { cache: 'no-store' })).json()
+    return manifest[chipName(device.chip)] ?? null
+  }
+
+  // Look up the published version as soon as we know the device (silently when offline).
+  async function refreshLatest() {
+    if (device?.chip === null || device?.chip === undefined) return
+    try {
+      latest = await fetchLatest()
+      log(`published firmware for ${chipName(device.chip)}: ${latest?.version ?? 'none'}`)
+    } catch (error) {
+      latest = null
+      log(`firmware check failed: ${describeError(error)}`)
+    }
+    renderInfo()
   }
 
   function progress(sent, total, text) {
@@ -122,8 +151,9 @@ export function setupFirmwareUi({ client, notify }) {
 
   $('fwCheckBtn').addEventListener('click', async () => {
     try {
-      const manifest = await (await fetch(MANIFEST_URL, { cache: 'no-store' })).json()
-      const entry = manifest[chipName(device.chip)]
+      const entry = await fetchLatest()
+      latest = entry
+      renderInfo()
       if (!entry) return notify('이 기기용 배포 펌웨어가 아직 없습니다')
       if (compareVersions(entry.version, device.version) <= 0) return notify(`최신 버전입니다 (${device.version})`)
       await run(async () => new Uint8Array(await (await fetch(`firmware/${entry.file}`, { cache: 'no-store' })).arrayBuffer()))
@@ -151,9 +181,11 @@ export function setupFirmwareUi({ client, notify }) {
       if (msg.type !== SECURE_MSG.DEVICE_INFO) return
       device = { version: msg.version, chip: msg.chip }
       renderInfo()
+      refreshLatest()
     },
     reset() {
       device = null
+      latest = null
       renderInfo()
     },
     get running() {

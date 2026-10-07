@@ -71,9 +71,9 @@ export function setupHostsUi({ client, notify, onChange = () => {}, onSelect = (
       textContent: '삭제',
       onclick: () => {
         const warn = host.connected ? '\n지금 연결되어 있다면 바로 끊깁니다.' : ''
-        if (!confirm(`"${title}" 페어링을 삭제할까요?${warn}\n다시 쓰려면 "PC 블루투스 연결 추가"로 새로 페어링해야 합니다.`)) return
+        if (!confirm(`"${title}" 페어링을 삭제할까요?${warn}\n다시 쓰려면 PC의 블루투스 설정에서도 ClipKey를 "디바이스 제거"한 뒤, "PC 블루투스 연결 추가"로 새로 페어링하세요.`)) return
         send(encodeDeleteHost(host.addr)).then(() => {
-          notify(`${title} 삭제됨`)
+          notify(`${title} 삭제됨. PC의 블루투스 설정에서도 ClipKey를 제거해야 다시 페어링할 수 있습니다`)
           refresh()
         })
       },

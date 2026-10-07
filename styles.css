@@ -214,3 +214,5 @@ details.phrases[open] > summary { margin-bottom: 4px; }
   white-space: pre-wrap; word-break: break-all; background: var(--surface);
   border: 1px solid var(--border); border-radius: 8px;
 }
+
+.update-available { color: var(--warn); font-weight: 600; }

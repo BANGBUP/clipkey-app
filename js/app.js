@@ -13,6 +13,7 @@ import { setupPhrases } from './phrases.js'
 import { setupDebug } from './debug.js'
 import { setupFirmwareUi } from './fwui.js'
 import { appLog, describeError } from './log.js'
+import { APP_VERSION } from './version.js'
 
 import { createReconnector } from './reconnect.js'
 import { tokenStore } from './auth.js'
@@ -28,7 +29,7 @@ import {
 } from './protocol.js'
 
 const log = (m) => appLog.add(`[app] ${m}`)
-log(`start: ${navigator.userAgent}`)
+log(`start: app ${APP_VERSION} ${navigator.onLine ? 'online' : 'offline'} | ${navigator.userAgent}`)
 
 const $ = (id) => document.getElementById(id)
 const SETTINGS_KEY = 'clipkey.settings.v1'
@@ -430,6 +431,8 @@ function init() {
   })
   target = setupTarget({ client, sender, notify, getHosts: () => hostsUi.hosts })
   setupDebug({ notify })
+  // Offline the service worker serves the last downloaded copy, which may be older.
+  $('appVersion').textContent = `앱 버전 ${APP_VERSION}${navigator.onLine ? '' : ' (오프라인 저장본)'}`
   firmwareUi = setupFirmwareUi({ client, notify })
   $('setupCodeBtn').addEventListener('click', async () => {
     const code = $('setupCodeInput').value

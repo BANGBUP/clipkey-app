@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Network first so updates show up immediately.
-const CACHE = 'clipkey-v8'
+const CACHE = 'clipkey-v9'
 const SHELL = [
   './',
   'index.html',
@@ -30,6 +30,7 @@ const SHELL = [
   'js/debug.js',
   'js/firmware.js',
   'js/fwui.js',
+  'js/version.js',
 ]
 
 self.addEventListener('install', (event) => {
