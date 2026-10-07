@@ -216,3 +216,5 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 }
 
 .update-available { color: var(--warn); font-weight: 600; }
+
+.app-version { font-size: 12px; font-weight: 400; color: var(--muted); }

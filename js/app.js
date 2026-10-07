@@ -432,7 +432,7 @@ function init() {
   target = setupTarget({ client, sender, notify, getHosts: () => hostsUi.hosts })
   setupDebug({ notify })
   // Offline the service worker serves the last downloaded copy, which may be older.
-  $('appVersion').textContent = `앱 버전 ${APP_VERSION}${navigator.onLine ? '' : ' (오프라인 저장본)'}`
+  $('appVersion').textContent = `v${APP_VERSION}${navigator.onLine ? '' : ' · 오프라인 저장본'}`
   firmwareUi = setupFirmwareUi({ client, notify })
   $('setupCodeBtn').addEventListener('click', async () => {
     const code = $('setupCodeInput').value
