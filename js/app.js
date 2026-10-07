@@ -454,6 +454,14 @@ function init() {
       client.disconnect() // silent, but never leave a half-open link behind
     })
 
+  // Closing / updating the app must release the BLE link: otherwise Android keeps holding it
+  // and the ClipKey stops showing up in the chooser until Bluetooth is toggled.
+  window.addEventListener('pagehide', () => {
+    userDisconnected = true
+    reconnector.stop()
+    client.disconnect()
+  })
+
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => undefined)
 }
 
