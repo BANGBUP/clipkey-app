@@ -207,3 +207,10 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 }
 .phrase-row .pin { width: 22px; height: 22px; align-self: center; flex: none; }
 .history-head { align-items: center; }
+
+.debug-panel { max-width: 720px; margin: 0 auto 80px; padding: 0 16px; display: flex; flex-direction: column; gap: 6px; }
+.debug-log {
+  margin: 0; max-height: 40vh; overflow: auto; padding: 8px; font-size: 11px; line-height: 1.4;
+  white-space: pre-wrap; word-break: break-all; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px;
+}

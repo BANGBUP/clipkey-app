@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Network first so updates show up immediately.
-const CACHE = 'clipkey-v6'
+const CACHE = 'clipkey-v7'
 const SHELL = [
   './',
   'index.html',
@@ -26,6 +26,8 @@ const SHELL = [
   'js/target.js',
   'js/lists.js',
   'js/phrases.js',
+  'js/log.js',
+  'js/debug.js',
 ]
 
 self.addEventListener('install', (event) => {

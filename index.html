@@ -146,6 +146,7 @@
         <p class="hint">처음 연결할 때 Windows / iPad·Mac을 자동으로 구분해 한/영 전환 방법과 입력 속도를 맞춥니다. 틀리면 여기서 바꾸세요. (최대 6대 기억, 동시 연결 2대)</p>
         <div id="hostList" class="host-list"></div>
       </div>
+      <label class="check"><input type="checkbox" id="debugEnabled"> 디버그 로그 표시 (화면 아래, 앱 시작부터 기록)</label>
       <div class="field">
         <p class="hint">폰 등록에는 기기의 설정 코드가 필요합니다. 기기를 초기화하려면 BOOT 버튼을 5초 누르세요(등록된 폰·PC 모두 삭제).</p>
         <button id="reregisterBtn" class="btn">이 폰 다시 등록</button>
@@ -153,6 +154,15 @@
       </div>
     </section>
   </main>
+
+  <section id="debugPanel" class="debug-panel hidden">
+    <div class="row">
+      <strong class="grow">디버그 로그</strong>
+      <button id="debugCopyBtn" class="btn small">로그 복사</button>
+      <button id="debugClearBtn" class="btn small">지우기</button>
+    </div>
+    <pre id="debugLog" class="debug-log"></pre>
+  </section>
 
   <div id="toast" class="toast hidden" role="status"></div>
 

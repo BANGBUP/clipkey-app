@@ -10,6 +10,9 @@ import { setupHostsUi } from './hostsui.js'
 import { setupNickname } from './nickname.js'
 import { setupTarget } from './target.js'
 import { setupPhrases } from './phrases.js'
+import { setupDebug } from './debug.js'
+import { appLog, describeError } from './log.js'
+
 import { createReconnector } from './reconnect.js'
 import { tokenStore } from './auth.js'
 import { TOGGLE_KEYS, KEEP_AWAKE_KEYS, DEFAULT_KEEP_AWAKE_KEY, HOST_PROFILE, PAIR_ACTION } from './constants.js'
@@ -21,6 +24,9 @@ import {
   encodeSetKeepAwake,
   keepAwakeKeyId,
 } from './protocol.js'
+
+const log = (m) => appLog.add(`[app] ${m}`)
+log(`start: ${navigator.userAgent}`)
 
 const $ = (id) => document.getElementById(id)
 const SETTINGS_KEY = 'clipkey.settings.v1'
@@ -50,6 +56,7 @@ function saveSettings(settings) {
 
 let toastTimer = null
 function notify(message) {
+  log(`notify: ${message}`)
   const el = $('toast')
   el.textContent = message
   el.classList.remove('hidden')
@@ -133,6 +140,7 @@ function renderStatus(status) {
   pcPair?.render(status)
   // A PC just paired, connected, disconnected or was identified: refresh the paired list.
   const hostKey = `${status.pcConnected}:${status.hostProfile}:${status.usbPc}:${status.activeConn}:${status.targetKind}`
+  if (hostKey !== lastHostKey) log(`status: pc=${status.pcConnected} profile=${status.hostProfile} usb=${status.usbPc} conn=${status.activeConn} target=${status.targetKind}`)
   const paired = status.pairAction !== lastPairAction && status.pairAction === PAIR_ACTION.DONE
   if (paired || (lastHostKey && hostKey !== lastHostKey)) hostsUi?.refresh()
   lastHostKey = hostKey
@@ -144,6 +152,7 @@ function renderStatus(status) {
 const client = createClient({
   onStatus: renderStatus,
   onDisconnect: ({ wasConnected }) => {
+    log(`onDisconnect wasConnected=${wasConnected} connecting=${client.connecting} user=${userDisconnected}`)
     nickname?.reset()
     renderStatus(null)
     usbMode?.onDisconnect()
@@ -174,6 +183,7 @@ const client = createClient({
 // Silent reconnect while the page is open (device reboot, out of range, ...).
 const reconnector = createReconnector({
   connect: async () => {
+    log('auto-reconnect attempt')
     await client.connect({ reuse: true })
     await pushSettings()
   },
@@ -208,11 +218,24 @@ function askSetupCode() {
   })
 }
 
+// The 연결 button: always show the chooser first (it needs the fresh tap), then connect.
+async function connectFromButton(options = {}) {
+  reconnector.stop() // no await: the chooser must open within the tap
+  try {
+    await client.chooseDevice()
+  } catch (error) {
+    log(`chooser: ${describeError(error)}`)
+    if (error.name !== 'NotFoundError') notify(`기기 선택 실패: ${error.message}`) // NotFound = dismissed
+    return
+  }
+  await connect(options)
+}
+
 async function connect(options = {}) {
   await reconnector.stop() // a manual connect replaces any background retry (and waits for it)
   userDisconnected = false
   try {
-    const status = await client.connect({ reuse: client.hasDevice, getSetupCode: askSetupCode, ...options })
+    const status = await client.connect({ reuse: true, getSetupCode: askSetupCode, ...options })
     await pushSettings()
     if (client.justRegistered) nickname?.askAfterRegister()
     if (!status.pcConnected) notify('기기에 연결했습니다. PC가 아직 연결되지 않았습니다(USB 케이블 또는 설정 → PC 블루투스 연결 추가)')
@@ -238,13 +261,16 @@ async function sendText(text, { record = true } = {}) {
     return false
   }
   try {
+    log(`send ${[...text].length} chars`)
     const { skipped, completed } = await sender.sendText(text)
+    log(`send done completed=${completed} skipped=${skipped}`)
     if (!completed) notify('취소했습니다')
     else if (skipped > 0) notify(`완료 · 건너뛴 문자 ${skipped}개: ${unsupportedChars(text).join(' ')}`)
     else notify('타이핑 완료')
     if (completed && record) phrases?.record(text)
     return completed
   } catch (error) {
+    log(`send failed: ${describeError(error)}`)
     notify(`전송 실패: ${error.message}`)
     return false
   }
@@ -366,7 +392,7 @@ function wireSettings() {
       suppressNextReconnect = true // this disconnect must not start the auto-reconnect
       client.disconnect()
     }
-    connect({ forceRegister: true })
+    connectFromButton({ forceRegister: true })
   })
   $('disconnectBtn').addEventListener('click', () => {
     userDisconnected = true
@@ -398,6 +424,7 @@ function init() {
     onSelect: (host) => target?.selectHost(host),
   })
   target = setupTarget({ client, sender, notify, getHosts: () => hostsUi.hosts })
+  setupDebug({ notify })
   phrases = setupPhrases({ sendText, fillInput: (text) => ($('sendText').value = text), notify })
   nickname = setupNickname({ client, notify, onChange: () => client.status && renderStatus(client.status) })
   hostsUi.render()
@@ -412,7 +439,7 @@ function init() {
   })
   renderStatus(null)
   applyShareTarget()
-  $('connectBtn').addEventListener('click', () => connect())
+  $('connectBtn').addEventListener('click', () => connectFromButton())
 
   if (!isSupported()) {
     notify('이 브라우저는 Web Bluetooth를 지원하지 않습니다. 안드로이드 크롬에서 여세요')
@@ -422,7 +449,10 @@ function init() {
   client
     .reconnectKnown()
     .then((status) => status && pushSettings())
-    .catch(() => client.disconnect()) // silent, but never leave a half-open link behind
+    .catch((error) => {
+      log(`startup auto-connect failed: ${describeError(error)}`)
+      client.disconnect() // silent, but never leave a half-open link behind
+    })
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => undefined)
 }

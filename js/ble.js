@@ -5,9 +5,28 @@ import { parseStatus, parseAuthRead, encodeProve, encodeRegister } from './proto
 import { tokenStore, createToken, proveToken } from './auth.js'
 import { sealToken, deriveSessionKey, sealFrame, openDeviceFrame } from './crypto.js'
 import { parseSecureMessage } from './hosts.js'
+import { appLog, describeError } from './log.js'
+
+const log = (m) => appLog.add(`[ble] ${m}`)
 
 const STATUS_WAIT_MS = 1500
 const GATT_RETRY_DELAY_MS = 700
+const GATT_STEP_TIMEOUT_MS = 15000
+
+// Android's gatt.connect() can wait forever for a device that isn't there.
+function withTimeout(promise, what) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new DOMException(`${what} 시간 초과`, 'NetworkError')), GATT_STEP_TIMEOUT_MS)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+// Name first; the service UUID (in the scan response) as a second way to find a ClipKey.
+const CHOOSER_OPTIONS = {
+  filters: [{ namePrefix: DEVICE_NAME }, { services: [UUID.SERVICE] }],
+  optionalServices: [UUID.SERVICE],
+}
 
 // Android often fails the first GATT step after a reconnect; those are worth one retry.
 // Our own errors (wrong code, not registered, cancelled) are plain Errors and are not.
@@ -77,6 +96,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
 
   const handleDisconnect = () => {
     const wasConnected = session !== null
+    log(`disconnected (wasConnected=${wasConnected})`)
     chars = null
     status = null
     session = null
@@ -154,6 +174,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
 
   async function authenticate(forceRegister, getSetupCode) {
     const stored = forceRegister ? null : tokenStore.load(device.id)
+    log(stored ? 'auth: prove with saved token' : 'auth: register (setup code)')
     let creds
     justRegistered = !stored
     if (stored) {
@@ -180,6 +201,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
   // Leaves no half-open link behind: the app must never think "disconnected" while the
   // phone still holds a GATT connection (the next connect would then fail with GATT errors).
   function dropLink() {
+    log(`drop link (gatt connected=${Boolean(device?.gatt?.connected)})`)
     chars = null
     session = null
     status = null
@@ -189,17 +211,18 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
   async function connectOnce({ reuse, forceRegister, getSetupCode }) {
     if (!isSupported()) throw new Error('이 브라우저는 Web Bluetooth를 지원하지 않습니다 (안드로이드 크롬 사용)')
     if (!reuse || !device) {
-      device = await navigator.bluetooth.requestDevice({
-        filters: [{ namePrefix: DEVICE_NAME }],
-        optionalServices: [UUID.SERVICE],
-      })
+      device = await navigator.bluetooth.requestDevice(CHOOSER_OPTIONS)
       device.ongattserverdisconnected = handleDisconnect
     }
     registeredThisConnect = false
     for (let attempt = 1; ; attempt += 1) {
       try {
-        return await openLink(forceRegister && !registeredThisConnect, getSetupCode)
+        log(`connect attempt ${attempt} to ${device.name ?? device.id} (forceRegister=${forceRegister})`)
+        const result = await openLink(forceRegister && !registeredThisConnect, getSetupCode)
+        log(`connected: pc=${result.pcConnected} target=${result.targetKind} ime=${result.imeHangul ? '가' : 'A'}`)
+        return result
       } catch (error) {
+        log(`attempt ${attempt} failed: ${describeError(error)} (retry=${attempt < 2 && isTransientGattError(error)})`)
         dropLink()
         if (attempt >= 2 || !isTransientGattError(error)) throw error
         await new Promise((r) => setTimeout(r, GATT_RETRY_DELAY_MS))
@@ -229,8 +252,10 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
 
   async function openLink(forceRegister, getSetupCode) {
     if (device.gatt.connected) device.gatt.disconnect() // start from a clean link
-    const server = await device.gatt.connect()
-    const service = await server.getPrimaryService(UUID.SERVICE)
+    log('gatt.connect…')
+    const server = await withTimeout(device.gatt.connect(), '연결')
+    log('getPrimaryService…')
+    const service = await withTimeout(server.getPrimaryService(UUID.SERVICE), '서비스 확인')
     if (!device.gatt.connected) throw new DOMException('블루투스 연결이 끊겼습니다', 'NetworkError')
     chars = {
       cmd: await service.getCharacteristic(UUID.CMD),
@@ -243,13 +268,32 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     return authenticate(forceRegister, getSetupCode)
   }
 
+  /**
+   * Opens the device chooser. Must be called straight from the click (Chrome only allows
+   * the chooser right after a user gesture): it first aborts any connect in progress.
+   */
+  async function chooseDevice() {
+    if (!isSupported()) throw new Error('이 브라우저는 Web Bluetooth를 지원하지 않습니다 (안드로이드 크롬 사용)')
+    log('chooser open')
+    const picking = navigator.bluetooth.requestDevice(CHOOSER_OPTIONS) // before any await
+    if (device?.gatt?.connected && !session) device.gatt.disconnect() // abandon a stuck attempt
+    const picked = await picking
+    log(`chooser picked ${picked.name ?? picked.id}`)
+    if (picked !== device) {
+      if (device?.gatt?.connected) device.gatt.disconnect()
+      device = picked
+      device.ongattserverdisconnected = handleDisconnect
+    }
+    return device
+  }
+
   /** Reconnects to a previously permitted device without a chooser, if the browser allows it. */
   async function reconnectKnown() {
     if (!isSupported() || typeof navigator.bluetooth.getDevices !== 'function') return null
     // Only a ClipKey this phone is registered with: registering needs the user.
-    const known = (await navigator.bluetooth.getDevices()).find(
-      (d) => d.name?.startsWith(DEVICE_NAME) && tokenStore.load(d.id),
-    )
+    const devices = await navigator.bluetooth.getDevices()
+    const known = devices.find((d) => d.name?.startsWith(DEVICE_NAME) && tokenStore.load(d.id))
+    log(`startup: ${devices.length} permitted device(s), auto-connect to ${known?.name ?? 'none'}`)
     if (!known) return null
     device = known
     device.ongattserverdisconnected = handleDisconnect
@@ -297,6 +341,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
 
   return Object.freeze({
     connect,
+    chooseDevice,
     reconnectKnown,
     disconnect,
     send,
