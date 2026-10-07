@@ -78,6 +78,8 @@ export const SECURE_MSG = Object.freeze({
   DEVICE_INFO: 0x04, // [0x04, nick len, nick, version len, version, chip]
   OTA_RESULT: 0x05, // [0x05, phase 1 begin | 2 end, result 0 ok | 1 rejected | 2 failed]
   DEVICE_LOG: 0x06, // [0x06, text...] device event for the debug log
+  PC_RX: 0x07, // [0x07, state, received u16 LE, total u16 LE]  PC -> phone text progress (pcrx.js)
+  PC_TEXT: 0x08, // [0x08, offset u16 LE, total u16 LE, bytes 1..64]  PC -> phone text chunk
 })
 
 // How a paired computer switches Korean / English (and its typing quirks).

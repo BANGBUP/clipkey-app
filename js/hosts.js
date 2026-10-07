@@ -1,6 +1,7 @@
 // Paired PC / tablet list: encrypted device -> phone messages and host commands.
 
 import { FRAME, SECURE_MSG, HOST_PROFILE, TARGET } from './constants.js'
+import { parsePcRx, parsePcText } from './pcrx.js'
 
 const ADDR_LEN = 6
 const HOST_HEADER = 1 + 1 + 1 + ADDR_LEN + 1 + 1 + 1 // type, index, addr type, addr, profile, flags, name len
@@ -65,6 +66,10 @@ export function parseSecureMessage(bytes) {
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
       return { type: SECURE_MSG.PAIR_PROMPT, state: bytes[1], passkey: view.getUint32(2, true) }
     }
+    case SECURE_MSG.PC_RX:
+      return parsePcRx(bytes)
+    case SECURE_MSG.PC_TEXT:
+      return parsePcText(bytes)
     default:
       throw new Error(`알 수 없는 보안 메시지: ${bytes[0]}`)
   }

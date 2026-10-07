@@ -247,4 +247,15 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 
 .update-available { color: var(--warn); font-weight: 600; }
 
+/* 받기 tab */
+.tab-dot { display: inline-block; width: 8px; height: 8px; margin-left: 4px; vertical-align: super; border-radius: 50%; background: var(--danger); }
+.cmd {
+  display: block; padding: 8px; font-size: 12px; word-break: break-all; white-space: pre-wrap;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+}
+.rx-item { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+.rx-text { margin: 0; max-height: 9em; overflow: auto; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 14px; }
+.rx-item.expanded .rx-text { max-height: none; }
+.rx-item .row { flex-wrap: wrap; }
+
 .app-version { font-size: 12px; font-weight: 400; color: var(--muted); }

@@ -43,6 +43,7 @@
   <nav class="tabs" role="tablist">
     <button role="tab" class="tab active" data-tab="send">보내기</button>
     <button role="tab" class="tab" data-tab="keys">키보드</button>
+    <button role="tab" class="tab" data-tab="receive">받기<span class="tab-dot hidden" id="receiveDot" aria-label="새 텍스트"></span></button>
     <button role="tab" class="tab" data-tab="settings">설정</button>
   </nav>
 
@@ -80,6 +81,26 @@
     <section id="tab-keys" class="panel">
       <p class="hint">누르는 즉시 PC로 입력됩니다. Ctrl·Shift·Alt·Win은 한 번 누르면 다음 키 하나에만, 두 번 누르면 다시 누를 때까지 적용됩니다.</p>
       <div id="vkeyboard" class="vkeyboard"></div>
+    </section>
+
+    <section id="tab-receive" class="panel">
+      <div class="field">
+        <div id="pcRxStatus" aria-live="polite">대기 중</div>
+        <progress id="pcRxBar" class="hidden" max="1" value="0"></progress>
+      </div>
+      <label class="check"><input type="checkbox" id="pcRxAutoCopy"> 받으면 바로 이 폰 클립보드에 복사</label>
+      <details class="phrases">
+        <summary><strong>사용 방법</strong></summary>
+        <p class="hint">PC에서 clipkey-send.ps1 스크립트를 실행하면 PC 클립보드의 텍스트가 이 화면으로 옵니다.
+          Windows 전용이며 Num Lock·Caps Lock·Scroll Lock 표시등으로 보내므로, 전송 중에는 PC 키보드를 쓰지 마세요.
+          속도는 블루투스에서 초당 몇 바이트(한글 1~2자) 정도로 느립니다. 최대 4096바이트.</p>
+        <p class="hint">PC의 PowerShell에서 실행:</p>
+        <code class="cmd" id="pcRxCmd">iwr https://bangbup.github.io/clipkey-app/tools/clipkey-send.ps1 -OutFile $env:TEMP\clipkey-send.ps1 ; powershell -ExecutionPolicy Bypass -File $env:TEMP\clipkey-send.ps1</code>
+        <button id="pcRxCmdCopy" class="btn small">명령 복사</button>
+      </details>
+      <div class="row"><strong class="grow">받은 텍스트</strong><button id="pcRxClearBtn" class="btn small danger">모두 지우기</button></div>
+      <p class="hint" id="pcRxEmpty">아직 받은 텍스트가 없습니다. 받은 내용은 이 화면에만 있고 앱을 닫으면 사라집니다.</p>
+      <div id="pcRxList" class="phrase-list"></div>
     </section>
 
     <section id="tab-settings" class="panel">

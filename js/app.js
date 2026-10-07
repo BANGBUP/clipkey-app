@@ -5,6 +5,7 @@ import { unsupportedChars } from './keymap.js'
 import { createSender } from './sender.js'
 import { setupKeyboard } from './keyboard.js'
 import { setupSetupCode } from './setupcode.js'
+import { setupPcReceive } from './pcrxui.js'
 import { setupUsbMode } from './usbmode.js'
 import { setupPcPairing } from './pcpair.js'
 import { setupHostsUi } from './hostsui.js'
@@ -83,6 +84,7 @@ function setChip(name, text, state) {
 let settings = loadSettings()
 let keyboard = null
 let setupCode = null
+let pcRx = null
 let usbMode = null
 let pcPair = null
 let hostsUi = null
@@ -188,6 +190,7 @@ const client = createClient({
     log(`onDisconnect wasConnected=${wasConnected} connecting=${client.connecting} user=${userDisconnected}`)
     nickname?.reset()
     firmwareUi?.reset()
+    pcRx?.reset()
     renderStatus(null)
     usbMode?.onDisconnect()
     if (suppressNextReconnect) {
@@ -213,6 +216,7 @@ const client = createClient({
     hostsUi?.onSecure(msg)
     nickname?.onSecure(msg)
     firmwareUi?.onSecure(msg)
+    pcRx?.onSecure(msg)
   },
 })
 
@@ -460,6 +464,13 @@ function init() {
   $('appVersion').textContent = `v${APP_VERSION}${navigator.onLine ? '' : ' · 오프라인 저장본'}`
   firmwareUi = setupFirmwareUi({ client, notify })
   setupCode = setupSetupCode({ client, notify })
+  pcRx = setupPcReceive({
+    notify,
+    toSendTab: (text) => {
+      $('sendText').value = text
+      document.querySelector('.tab[data-tab="send"]').click()
+    },
+  })
   phrases = setupPhrases({ sendText, fillInput: (text) => ($('sendText').value = text), notify })
   nickname = setupNickname({ client, notify, onChange: () => client.status && renderStatus(client.status) })
   hostsUi.render()
