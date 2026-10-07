@@ -81,6 +81,7 @@ export const SECURE_MSG = Object.freeze({
   PC_RX: 0x07, // [0x07, state, received u16 LE, total u16 LE]  PC -> phone text progress (pcrx.js)
   PC_TEXT: 0x08, // [0x08, offset u16 LE, total u16 LE, bytes 1..64]  PC -> phone text chunk
   DEVICE_EVENT: 0x09, // [0x09, flags, boot u16, seq u16, uptime_s u32, text...] (devevents.js)
+  OTA_PROGRESS: 0x0A, // [0x0A, status 0 ok | 1 resend from | 2 failed, bytes written u32 LE] (otastream.js)
 })
 
 // SECURE_MSG.DEVICE_EVENT flags

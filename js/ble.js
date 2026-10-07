@@ -394,6 +394,21 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     })
   }
 
+  /**
+   * Like send(), but as a write without response: resolves once the frame is queued, so the
+   * next one can follow right away (OTA streaming). Only when canStream.
+   */
+  async function sendNoResponse(frame) {
+    if (!chars || !session) throw new Error('연결되어 있지 않습니다')
+    return serialize(async () => {
+      if (!chars || !session) throw new Error('연결이 끊겼습니다')
+      const counter = session.counter
+      session = { ...session, counter: counter + 1 }
+      const sealed = await sealFrame(session.key, counter, frame)
+      return chars.cmd.writeValueWithoutResponse(sealed)
+    })
+  }
+
   /** Sends a KEYS frame once the device queue has room for it, retrying if the device reports it full. */
   async function sendKeys(frame, isCancelled = () => false) {
     const needed = (frame.length - 1) / 2
@@ -426,10 +441,15 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     reconnectKnown,
     disconnect,
     send,
+    sendNoResponse,
     sendKeys,
     readStatus,
     get connected() {
       return Boolean(chars && session)
+    },
+    // Firmware that streams OTA data marks CMD as writable without response.
+    get canStream() {
+      return Boolean(chars?.cmd?.properties?.writeWithoutResponse && typeof chars.cmd.writeValueWithoutResponse === 'function')
     },
     get hasDevice() {
       return Boolean(device)

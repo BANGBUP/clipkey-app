@@ -12,12 +12,16 @@ import {
   compareVersions,
   OTA_CHUNK,
 } from './firmware.js'
+import { createOtaStream, StreamUnsupportedError } from './otastream.js'
 import { appLog, describeError } from './log.js'
 
 const MANIFEST_URL = 'firmware/manifest.json'
 const CHUNK_RETRIES = 3
 const BEGIN_TIMEOUT_MS = 30000
 const END_TIMEOUT_MS = 120000 // the device re-reads and verifies the whole image
+const STREAM_WINDOW = 16384 // unconfirmed bytes in flight (the device confirms every 4 KB)
+const STREAM_STALL_MS = 2000 // no progress note for this long: resend from the last confirmed point
+const STREAM_MAX_STALLS = 8
 const RESULT_TEXT = ['', '거부됨 (서명·기기 종류·이전 버전 확인 실패)', '기기 오류']
 const log = (m) => appLog.add(`[ota] ${m}`)
 
@@ -29,6 +33,7 @@ export function setupFirmwareUi({ client, notify }) {
   let cancelled = false
   let waiting = null // { phase, resolve } for the next OTA_RESULT
   let latest = null // { version, file } from the site manifest for this chip, once fetched
+  let stream = null // the running fast upload, fed by OTA_PROGRESS notes
 
   function awaitResult(phase, timeoutMs) {
     return new Promise((resolve, reject) => {
@@ -110,6 +115,33 @@ export function setupFirmwareUi({ client, notify }) {
     }
   }
 
+  // Fast path: chunks back to back, the device reports progress. Returns how much is done
+  // (all of it, or 0 when this link cannot stream and the slow path must start over).
+  async function streamData(image) {
+    const total = image.length
+    stream = createOtaStream({
+      total,
+      chunkSize: OTA_CHUNK,
+      windowBytes: STREAM_WINDOW,
+      stallMs: STREAM_STALL_MS,
+      maxStalls: STREAM_MAX_STALLS,
+      sendChunk: (offset, length) => client.sendNoResponse(encodeOtaData(offset, image.subarray(offset, offset + length))),
+      onProgress: (confirmed) => progress(confirmed, total),
+      isCancelled: () => cancelled,
+    })
+    try {
+      await stream.run()
+      log('streamed')
+      return total
+    } catch (error) {
+      if (!(error instanceof StreamUnsupportedError)) throw error
+      log(`streaming refused (${error.message}): slower mode`)
+      return 0
+    } finally {
+      stream = null
+    }
+  }
+
   async function upload(pkg) {
     if (pkg.chip !== device.chip) throw new Error(`이 파일은 ${chipName(pkg.chip)}용입니다 (기기: ${chipName(device.chip)})`)
     running = true
@@ -125,7 +157,8 @@ export function setupFirmwareUi({ client, notify }) {
       await sendWithRetry(encodeOtaBegin(pkg))
       await begun
       const started = Date.now()
-      for (let offset = 0; offset < total; offset += OTA_CHUNK) {
+      const from = client.canStream ? await streamData(pkg.image) : 0
+      for (let offset = from; offset < total; offset += OTA_CHUNK) {
         if (cancelled) throw new Error('취소했습니다')
         await sendWithRetry(encodeOtaData(offset, pkg.image.subarray(offset, offset + OTA_CHUNK)), { isData: true })
         progress(Math.min(offset + OTA_CHUNK, total), total)
@@ -184,6 +217,10 @@ export function setupFirmwareUi({ client, notify }) {
 
   return Object.freeze({
     onSecure(msg) {
+      if (msg.type === SECURE_MSG.OTA_PROGRESS) {
+        stream?.onNote(msg)
+        return
+      }
       if (msg.type === SECURE_MSG.OTA_RESULT) {
         if (waiting?.phase === msg.phase) waiting.resolve(msg.result)
         return

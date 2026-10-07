@@ -57,6 +57,9 @@ export function parseSecureMessage(bytes) {
         chip: bytes.length > chipAt ? bytes[chipAt] : null,
       }
     }
+    case SECURE_MSG.OTA_PROGRESS:
+      if (bytes.length < 6) throw new Error('업데이트 진행 길이 오류')
+      return { type: SECURE_MSG.OTA_PROGRESS, status: bytes[1], written: new DataView(bytes.buffer, bytes.byteOffset).getUint32(2, true) }
     case SECURE_MSG.DEVICE_EVENT:
       return parseDeviceEvent(bytes)
     case SECURE_MSG.DEVICE_LOG:
