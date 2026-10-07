@@ -17,7 +17,14 @@ import { APP_VERSION } from './version.js'
 
 import { createReconnector } from './reconnect.js'
 import { tokenStore } from './auth.js'
-import { TOGGLE_KEYS, KEEP_AWAKE_KEYS, DEFAULT_KEEP_AWAKE_KEY, HOST_PROFILE, PAIR_ACTION } from './constants.js'
+import {
+  TOGGLE_KEYS,
+  KEEP_AWAKE_KEYS,
+  DEFAULT_KEEP_AWAKE_KEY,
+  HOST_PROFILE,
+  PAIR_ACTION,
+  SECURE_MSG,
+} from './constants.js'
 import {
   encodeSetIme,
   encodeSetToggleKey,
@@ -178,6 +185,7 @@ const client = createClient({
     })
   },
   onSecure: (msg) => {
+    if (msg.type === SECURE_MSG.DEVICE_LOG) appLog.add(`[dev] ${msg.text}`)
     pcPair?.onSecure(msg)
     hostsUi?.onSecure(msg)
     nickname?.onSecure(msg)

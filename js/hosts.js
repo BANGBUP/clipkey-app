@@ -55,6 +55,8 @@ export function parseSecureMessage(bytes) {
         chip: bytes.length > chipAt ? bytes[chipAt] : null,
       }
     }
+    case SECURE_MSG.DEVICE_LOG:
+      return { type: SECURE_MSG.DEVICE_LOG, text: new TextDecoder().decode(bytes.slice(1)) }
     case SECURE_MSG.OTA_RESULT:
       if (bytes.length < 3) throw new Error('업데이트 결과 길이 오류')
       return { type: SECURE_MSG.OTA_RESULT, phase: bytes[1], result: bytes[2] }

@@ -77,6 +77,7 @@ export const SECURE_MSG = Object.freeze({
   HOSTS_END: 0x03, // [0x03, total]
   DEVICE_INFO: 0x04, // [0x04, nick len, nick, version len, version, chip]
   OTA_RESULT: 0x05, // [0x05, phase 1 begin | 2 end, result 0 ok | 1 rejected | 2 failed]
+  DEVICE_LOG: 0x06, // [0x06, text...] device event for the debug log
 })
 
 // How a paired computer switches Korean / English (and its typing quirks).
