@@ -7,6 +7,9 @@ import { setupKeyboard } from './keyboard.js'
 import { setupSetupCode } from './setupcode.js'
 import { setupPcReceive } from './pcrxui.js'
 import { setupSendStats } from './sendstats.js'
+import { createEventFilter, formatDeviceEvent } from './devevents.js'
+
+const isNewEvent = createEventFilter() // device events repeat after every sign-in
 import { setupUsbMode } from './usbmode.js'
 import { setupPcPairing } from './pcpair.js'
 import { setupHostsUi } from './hostsui.js'
@@ -214,6 +217,7 @@ const client = createClient({
   },
   onSecure: (msg) => {
     if (msg.type === SECURE_MSG.DEVICE_LOG) appLog.add(`[dev] ${msg.text}`)
+    if (msg.type === SECURE_MSG.DEVICE_EVENT && isNewEvent(msg)) appLog.add(formatDeviceEvent(msg))
     pcPair?.onSecure(msg)
     hostsUi?.onSecure(msg)
     nickname?.onSecure(msg)

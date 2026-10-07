@@ -77,9 +77,16 @@ export const SECURE_MSG = Object.freeze({
   HOSTS_END: 0x03, // [0x03, total]
   DEVICE_INFO: 0x04, // [0x04, nick len, nick, version len, version, chip]
   OTA_RESULT: 0x05, // [0x05, phase 1 begin | 2 end, result 0 ok | 1 rejected | 2 failed]
-  DEVICE_LOG: 0x06, // [0x06, text...] device event for the debug log
+  DEVICE_LOG: 0x06, // [0x06, text...] device event (older firmware)
   PC_RX: 0x07, // [0x07, state, received u16 LE, total u16 LE]  PC -> phone text progress (pcrx.js)
   PC_TEXT: 0x08, // [0x08, offset u16 LE, total u16 LE, bytes 1..64]  PC -> phone text chunk
+  DEVICE_EVENT: 0x09, // [0x09, flags, boot u16, seq u16, uptime_s u32, text...] (devevents.js)
+})
+
+// SECURE_MSG.DEVICE_EVENT flags
+export const DEVICE_EVENT = Object.freeze({
+  REPLAYED: 1 << 0, // kept by the device, sent again after this phone signed in
+  EARLIER_BOOT: 1 << 1, // from before the device's last restart
 })
 
 // How a paired computer switches Korean / English (and its typing quirks).

@@ -2,6 +2,7 @@
 
 import { FRAME, SECURE_MSG, HOST_PROFILE, TARGET } from './constants.js'
 import { parsePcRx, parsePcText } from './pcrx.js'
+import { parseDeviceEvent } from './devevents.js'
 
 const ADDR_LEN = 6
 const HOST_HEADER = 1 + 1 + 1 + ADDR_LEN + 1 + 1 + 1 // type, index, addr type, addr, profile, flags, name len
@@ -56,6 +57,8 @@ export function parseSecureMessage(bytes) {
         chip: bytes.length > chipAt ? bytes[chipAt] : null,
       }
     }
+    case SECURE_MSG.DEVICE_EVENT:
+      return parseDeviceEvent(bytes)
     case SECURE_MSG.DEVICE_LOG:
       return { type: SECURE_MSG.DEVICE_LOG, text: new TextDecoder().decode(bytes.slice(1)) }
     case SECURE_MSG.OTA_RESULT:
