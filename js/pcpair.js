@@ -26,7 +26,13 @@ export function setupPcPairing({ client, notify }) {
   let lastStatus = null
   let shownPrompt = '' // avoids re-rendering (and wiping input) on every status update
 
-  const send = (frame) => client.send(frame).catch((e) => notify(`전송 실패: ${e.message}`))
+  // A refused write here almost always means the pairing it answers is already over
+  // (timed out, cancelled on the PC, or the link dropped in between).
+  const send = (frame) =>
+    client.send(frame).catch(() => {
+      notify('기기가 응답을 받지 않았습니다. 이 페어링은 이미 끝났을 수 있습니다. PC에서 다시 시도하세요')
+      close()
+    })
 
   function close(message) {
     active = false

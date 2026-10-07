@@ -149,7 +149,6 @@ function renderStatus(status) {
   lastHostKey = hostKey
   lastPairAction = status.pairAction
   renderTarget(status)
-  if (status.pairingOpen) notify('기기가 등록 모드입니다')
 }
 
 const client = createClient({
