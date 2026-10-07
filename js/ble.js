@@ -51,6 +51,15 @@ export function hasAttError(error, code) {
   return new RegExp(`0x0*${hex}(?![0-9a-f])`, 'i').test(String(error?.message))
 }
 
+// "Queue full" (0x80) means the device refused the whole frame, so resending cannot type
+// anything twice. Android Chrome often reports application errors only as a code-less
+// "GATT Error Unknown." (NotSupportedError); a lost link reports NetworkError instead.
+export function mayBeQueueFull(error) {
+  if (hasAttError(error, ATT_ERROR.QUEUE_FULL)) return true
+  const message = String(error?.message)
+  return error?.name === 'NotSupportedError' && /unknown/i.test(message) && !/0x[0-9a-f]+/i.test(message)
+}
+
 // The device rejects AUTH writes with application ATT errors (0x80..0x9f). Anything else is a
 // link problem and must stay a DOMException so the connect retry can handle it.
 export const isDeviceRejection = (error) => /0x0*(8[0-9a-f]|9[0-9a-f])(?![0-9a-f])/i.test(String(error?.message))
@@ -399,7 +408,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
           // Only "queue full" means the frame was not taken. Anything else may have reached
           // the device already, and resending would type the keys twice.
           retries += 1
-          if (!chars || !hasAttError(error, ATT_ERROR.QUEUE_FULL) || retries > QUEUE_FULL_RETRIES) throw error
+          if (!chars || !mayBeQueueFull(error) || retries > QUEUE_FULL_RETRIES) throw error
           await readStatus() // stale estimate: refresh and retry
           continue
         }
