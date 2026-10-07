@@ -93,6 +93,30 @@ export function textToOps(text) {
   return { ops: result.ops, skipped: result.skipped }
 }
 
+/**
+ * What typing `text` costs, without building the op list (cheap enough to run on every
+ * keystroke in the text box): characters, key taps, 한/영 switches, jamo commits, skipped.
+ */
+export function countKeys(text) {
+  let mode = null
+  const count = { chars: 0, taps: 0, modeSwitches: 0, commits: 0, skipped: 0 }
+  for (const ch of normalizeText(text)) {
+    count.chars += 1
+    const c = classify(ch)
+    if (!c) {
+      count.skipped += 1
+      continue
+    }
+    if (c.mode !== null && c.mode !== mode) count.modeSwitches += 1
+    mode = c.mode ?? mode
+    for (const op of c.ops) {
+      if (op.type === OP.COMMIT) count.commits += 1
+      else count.taps += 1
+    }
+  }
+  return count
+}
+
 /** Characters textToOps would skip, unique, as "U+XXXX" (for diagnosing odd input). */
 export function unsupportedChars(text) {
   const seen = [...normalizeText(text)].filter((ch) => classify(ch) === null)

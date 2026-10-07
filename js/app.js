@@ -6,6 +6,7 @@ import { createSender } from './sender.js'
 import { setupKeyboard } from './keyboard.js'
 import { setupSetupCode } from './setupcode.js'
 import { setupPcReceive } from './pcrxui.js'
+import { setupSendStats } from './sendstats.js'
 import { setupUsbMode } from './usbmode.js'
 import { setupPcPairing } from './pcpair.js'
 import { setupHostsUi } from './hostsui.js'
@@ -136,6 +137,7 @@ function renderLeds(status) {
 }
 
 function renderStatus(status) {
+  sendStats?.update() // the target PC (Apple or not) changes the estimate
   const connected = Boolean(status)
   setChip('link', connected ? `${deviceLabel()} 연결됨` : '기기 미연결', connected ? 'on' : 'bad')
   $('connectBtn').textContent = connected ? '연결됨' : '연결'
@@ -329,12 +331,27 @@ function wireTabs() {
   )
 }
 
+// Character count and time estimate under the send box.
+let sendStats = null
+function setSendText(text) {
+  $('sendText').value = text
+  sendStats?.update()
+}
+
 function wireSend() {
+  sendStats = setupSendStats({
+    textarea: $('sendText'),
+    out: $('sendStats'),
+    getTiming: () => {
+      const apple = isAppleHost()
+      return { delayMs: apple ? settings.appleDelay : settings.delay, settleMs: settings.settle, apple }
+    },
+  })
   $('sendBtn').addEventListener('click', () => sendText($('sendText').value))
-  $('clearBtn').addEventListener('click', () => ($('sendText').value = ''))
+  $('clearBtn').addEventListener('click', () => setSendText(''))
   $('pasteBtn').addEventListener('click', async () => {
     const text = await readClipboard()
-    if (text) $('sendText').value = text
+    if (text) setSendText(text)
   })
   // Clipboard sends are never recorded: that is where copied passwords come from.
   $('pasteSendBtn').addEventListener('click', async () => sendText(await readClipboard(), { record: false }))
@@ -397,6 +414,7 @@ function wireSettings() {
   const apply = (patch) => {
     settings = { ...settings, ...patch }
     saveSettings(settings)
+    sendStats?.update()
     if (client.connected) pushSettings().catch((e) => notify(e.message))
   }
   select.addEventListener('change', () => apply({ toggleKey: select.value }))
@@ -440,7 +458,7 @@ function applyShareTarget() {
   const params = new URLSearchParams(location.search)
   const shared = [params.get('text'), params.get('url')].filter(Boolean).join('\n')
   if (!shared) return
-  $('sendText').value = shared
+  setSendText(shared)
   history.replaceState(null, '', location.pathname)
   notify('공유된 텍스트를 받았습니다. 연결 후 "PC로 타이핑"을 누르세요')
 }
@@ -467,11 +485,11 @@ function init() {
   pcRx = setupPcReceive({
     notify,
     toSendTab: (text) => {
-      $('sendText').value = text
+      setSendText(text)
       document.querySelector('.tab[data-tab="send"]').click()
     },
   })
-  phrases = setupPhrases({ sendText, fillInput: (text) => ($('sendText').value = text), notify })
+  phrases = setupPhrases({ sendText, fillInput: setSendText, notify })
   nickname = setupNickname({ client, notify, onChange: () => client.status && renderStatus(client.status) })
   hostsUi.render()
   keyboard = setupKeyboard({ root: $('vkeyboard'), client, sender, notify, isApple: isAppleHost })

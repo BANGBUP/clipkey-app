@@ -52,6 +52,7 @@ h1 { font-size: 20px; margin: 0; }
 .chip.on { border-color: var(--ok); color: var(--ok); }
 .chip.warn { border-color: var(--warn); color: var(--warn); }
 .chip.bad { border-color: var(--danger); color: var(--danger); }
+.send-stats { margin: 2px 0 6px; min-height: 1.2em; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* PC keyboard LEDs: always one row of five, however narrow the screen */
 .leds { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin: 0 0 8px; }
