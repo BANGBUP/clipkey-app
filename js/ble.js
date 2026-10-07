@@ -38,9 +38,11 @@ const CHOOSER_OPTIONS = {
 // Android often fails the first GATT step after a reconnect; those are worth one retry.
 // Our own errors (wrong code, not registered, cancelled) are plain Errors and are not.
 const isTransientGattError = (error) =>
-  typeof DOMException !== 'undefined' &&
-  error instanceof DOMException &&
-  !['NotFoundError', 'SecurityError', 'NotAllowedError', 'AbortError'].includes(error.name)
+  // Some iOS BLE browsers reject with a bare number instead of an Error.
+  (typeof error === 'number' || typeof error === 'string') ||
+  (typeof DOMException !== 'undefined' &&
+    error instanceof DOMException &&
+    !['NotFoundError', 'SecurityError', 'NotAllowedError', 'AbortError'].includes(error.name))
 const QUEUE_FULL_RETRIES = 20
 
 // Chrome reports ATT application errors only inside the message text.

@@ -240,12 +240,13 @@ async function connect(options = {}) {
     if (client.justRegistered) nickname?.askAfterRegister()
     if (!status.pcConnected) notify('기기에 연결했습니다. PC가 아직 연결되지 않았습니다(USB 케이블 또는 설정 → PC 블루투스 연결 추가)')
   } catch (error) {
-    if (error.name === 'NotFoundError') return // chooser dismissed
-    if (error.name === 'AbortError') {
+    if (error?.name === 'NotFoundError') return // chooser dismissed
+    if (error?.name === 'AbortError') {
       client.disconnect()
       return notify(error.message)
     }
-    notify(error.message)
+    log(`connect failed: ${describeError(error)}`)
+    notify(error instanceof Error ? error.message : `연결 실패 (오류 ${String(error)}) - 다시 시도하세요`)
     client.disconnect()
   }
 }
