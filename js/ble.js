@@ -11,6 +11,13 @@ const log = (m) => appLog.add(`[ble] ${m}`)
 
 const STATUS_WAIT_MS = 1500
 const GATT_RETRY_DELAY_MS = 700
+
+// Older Web Bluetooth implementations (e.g. some iOS BLE browsers) only have writeValue(),
+// which for our characteristics is a write with response too.
+const writeWithResponse = (characteristic, value) =>
+  typeof characteristic.writeValueWithResponse === 'function'
+    ? characteristic.writeValueWithResponse(value)
+    : characteristic.writeValue(value)
 const GATT_STEP_TIMEOUT_MS = 15000
 
 // Android's gatt.connect() can wait forever for a device that isn't there.
@@ -147,7 +154,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     const token = createToken()
     const sealed = await sealToken({ devicePub, nonce, token, code })
     try {
-      await serialize(() => linkChars().auth.writeValueWithResponse(encodeRegister(sealed)))
+      await serialize(() => writeWithResponse(linkChars().auth, encodeRegister(sealed)))
     } catch (error) {
       // Never retried: the code may have reached the device, and every wrong try counts
       // toward its lockout (Chrome does not always include the ATT code in the message).
@@ -162,7 +169,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     const { nonce } = await readAuth()
     const hmac = await proveToken(token, nonce)
     try {
-      await serialize(() => linkChars().auth.writeValueWithResponse(encodeProve(hmac)))
+      await serialize(() => writeWithResponse(linkChars().auth, encodeProve(hmac)))
     } catch (error) {
       const hint = `인증 실패: 연결 문제이거나 이 폰이 기기에 등록되어 있지 않습니다. 계속되면 설정에서 다시 등록하세요 (${error.message})`
       // Proving is safe to retry (fresh nonce each time): keep link errors retryable.
@@ -315,7 +322,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
       const counter = session.counter
       session = { ...session, counter: counter + 1 }
       const sealed = await sealFrame(session.key, counter, frame)
-      return chars.cmd.writeValueWithResponse(sealed)
+      return writeWithResponse(chars.cmd, sealed)
     })
   }
 
