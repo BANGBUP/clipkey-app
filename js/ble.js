@@ -1,6 +1,6 @@
 // Web Bluetooth client for the ClipKey device.
 
-import { UUID, DEVICE_NAME, ATT_ERROR, FRAME } from './constants.js'
+import { UUID, DEVICE_NAME, ATT_ERROR, FRAME, REGISTER_DEFAULT_CODE } from './constants.js'
 import { parseStatus, parseAuthRead, encodeProve, encodeRegister } from './protocol.js'
 import { tokenStore, createToken, proveToken } from './auth.js'
 import { sealToken, deriveSessionKey, sealFrame, openDeviceFrame } from './crypto.js'
@@ -46,22 +46,32 @@ const isTransientGattError = (error) =>
 const QUEUE_FULL_RETRIES = 20
 
 // Chrome reports ATT application errors only inside the message text.
-function hasAttError(error, code) {
+export function hasAttError(error, code) {
   const hex = code.toString(16)
   return new RegExp(`0x0*${hex}(?![0-9a-f])`, 'i').test(String(error?.message))
 }
 
 // The device rejects AUTH writes with application ATT errors (0x80..0x9f). Anything else is a
 // link problem and must stay a DOMException so the connect retry can handle it.
-const isDeviceRejection = (error) => /0x0*(8[0-9a-f]|9[0-9a-f])(?![0-9a-f])/i.test(String(error?.message))
+export const isDeviceRejection = (error) => /0x0*(8[0-9a-f]|9[0-9a-f])(?![0-9a-f])/i.test(String(error?.message))
 
-function describeRegisterError(error) {
+const BOOT_HINT = '기기의 BOOT 버튼을 짧게 한 번 누른 뒤 60초 안에 다시 연결하세요(코드 없이 이 폰 1대 등록)'
+
+// Firmware before BOOT registration: only an already registered phone can help.
+const OLD_FIRMWARE_HINT =
+  '이 ClipKey의 펌웨어가 오래되어 BOOT 버튼 등록을 지원하지 않습니다. 등록된 폰에서 펌웨어를 업데이트하거나, 그 폰에서 설정 코드를 정한 뒤 그 코드로 등록하세요'
+
+function describeRegisterError(error, bootRegistration) {
   if (hasAttError(error, ATT_ERROR.NO_SETUP_CODE)) {
-    return '이 ClipKey는 기본 코드(0000)로 이미 폰이 등록되었습니다. 그 폰의 설정에서 설정 코드를 정한 뒤 그 코드로 등록하세요'
+    return bootRegistration ? `이 ClipKey에는 설정 코드가 없습니다. ${BOOT_HINT}` : OLD_FIRMWARE_HINT
   }
-  if (hasAttError(error, ATT_ERROR.LOCKED)) return '틀린 코드가 반복되어 등록이 잠시 잠겼습니다. 잠시 후 다시 시도하세요'
-  return '등록 실패: 설정 코드가 틀렸거나, 틀린 시도가 반복되어 잠겼습니다'
+  const boot = bootRegistration ? ` 코드를 모르면 ${BOOT_HINT}` : ''
+  if (hasAttError(error, ATT_ERROR.LOCKED)) return `틀린 코드가 반복되어 등록이 잠겼습니다. 잠시 후 다시 시도하세요.${boot}`
+  return `등록 실패: 설정 코드가 틀렸거나 등록이 잠겼습니다.${boot}`
 }
+
+/** getSetupCode may return this instead of a code: the user says BOOT was just pressed. */
+export const USE_BOOT_WINDOW = Symbol('boot window')
 
 export function isSupported() {
   return typeof navigator !== 'undefined' && 'bluetooth' in navigator
@@ -77,14 +87,21 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
   let session = null // { key: CryptoKey, counter: number }
   let lastDeviceCounter = -1 // device -> phone replay guard
   let justRegistered = false // the last connect registered this phone (first use of this ClipKey)
+  let registeredWithoutCode = false // ...and the ClipKey had no setup code stored then
+  let bootRegistration = true // this ClipKey's firmware supports registering via the BOOT button
   let writeChain = Promise.resolve()
   const statusWaiters = new Set()
+
+  // Before authentication the device reports only its caps byte: never shown as "connected".
+  const publishStatus = () => {
+    if (session) onStatus(status)
+  }
 
   const handleStatus = (event) => {
     status = parseStatus(event.target.value)
     statusWaiters.forEach((resolve) => resolve(status))
     statusWaiters.clear()
-    onStatus(status)
+    publishStatus()
   }
 
   // Encrypted device -> phone messages (PIN prompts, paired-device list).
@@ -106,7 +123,8 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     })
   }
 
-  const handleDisconnect = () => {
+  const handleDisconnect = (event) => {
+    if (event && event.target !== device) return // a device we already switched away from
     const wasConnected = session !== null
     log(`disconnected (wasConnected=${wasConnected})`)
     chars = null
@@ -141,7 +159,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
   async function readStatus() {
     const view = await serialize(() => linkChars().status.readValue())
     status = parseStatus(view)
-    onStatus(status)
+    publishStatus()
     return status
   }
 
@@ -163,7 +181,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     } catch (error) {
       // Never retried: the code may have reached the device, and every wrong try counts
       // toward its lockout (Chrome does not always include the ATT code in the message).
-      throw new Error(describeRegisterError(error))
+      throw new Error(describeRegisterError(error, bootRegistration))
     }
     tokenStore.save(device.id, token)
     registeredThisConnect = true
@@ -184,15 +202,32 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     return { token, nonce }
   }
 
+  // BOOT window open, or no code stored at all: register with the default code. Without the
+  // window the device answers NO_SETUP_CODE before checking anything (no lockout count), and
+  // older firmware still takes 0000 for its first phone.
+  async function chooseRegisterCode(getSetupCode) {
+    const before = await readStatus()
+    registeredWithoutCode = before.noSetupCode
+    bootRegistration = before.bootRegistration
+    log(`auth: register (window=${before.regWindow} noCode=${before.noSetupCode} boot=${bootRegistration})`)
+    if (before.regWindow || before.noSetupCode) return REGISTER_DEFAULT_CODE
+    const code = await getSetupCode({ bootRegistration })
+    if (code !== USE_BOOT_WINDOW) return code
+    const now = await readStatus()
+    if (!now.regWindow) throw new Error(`BOOT 버튼이 눌린 것을 확인하지 못했습니다. ${BOOT_HINT}`)
+    return REGISTER_DEFAULT_CODE
+  }
+
   async function authenticate(forceRegister, getSetupCode) {
     const stored = forceRegister ? null : tokenStore.load(device.id)
-    log(stored ? 'auth: prove with saved token' : 'auth: register (setup code)')
+    if (stored) log('auth: prove with saved token')
     let creds
     justRegistered = !stored
+    registeredWithoutCode = false
     if (stored) {
       creds = await prove(stored)
     } else {
-      const code = await getSetupCode()
+      const code = await chooseRegisterCode(getSetupCode)
       if (!code) throw Object.assign(new Error('등록을 취소했습니다'), { name: 'AbortError' })
       creds = await register(code)
     }
@@ -222,10 +257,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
 
   async function connectOnce({ reuse, forceRegister, getSetupCode }) {
     if (!isSupported()) throw new Error('이 브라우저는 Web Bluetooth를 지원하지 않습니다 (안드로이드 크롬 사용)')
-    if (!reuse || !device) {
-      device = await navigator.bluetooth.requestDevice(CHOOSER_OPTIONS)
-      device.ongattserverdisconnected = handleDisconnect
-    }
+    if (!reuse || !device) useDevice(await navigator.bluetooth.requestDevice(CHOOSER_OPTIONS))
     registeredThisConnect = false
     for (let attempt = 1; ; attempt += 1) {
       try {
@@ -291,11 +323,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     if (device?.gatt?.connected && !session) device.gatt.disconnect() // abandon a stuck attempt
     const picked = await picking
     log(`chooser picked ${picked.name ?? picked.id}`)
-    if (picked !== device) {
-      if (device?.gatt?.connected) device.gatt.disconnect()
-      device = picked
-      device.ongattserverdisconnected = handleDisconnect
-    }
+    useDevice(picked)
     return device
   }
 
@@ -310,9 +338,22 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     const known = devices.find((d) => d.name?.startsWith(DEVICE_NAME) && tokenStore.load(d.id))
     log(`startup: ${devices.length} permitted device(s), auto-connect to ${known?.name ?? 'none'}`)
     if (!known) return null
-    device = known
-    device.ongattserverdisconnected = handleDisconnect
+    useDevice(known)
     return connect({ reuse: true })
+  }
+
+  // Switches to another ClipKey. The old one's late disconnect event must not tear down the
+  // new link, so its handler goes first and its session is ended here.
+  function useDevice(next) {
+    if (next === device) return
+    if (device) {
+      device.ongattserverdisconnected = null
+      const hadSession = session !== null
+      dropLink()
+      if (hadSession) onDisconnect({ wasConnected: false }) // UI reset only, no auto-reconnect
+    }
+    device = next
+    device.ongattserverdisconnected = handleDisconnect
   }
 
   function disconnect() {
@@ -355,9 +396,11 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
         try {
           return await send(frame)
         } catch (error) {
+          // Only "queue full" means the frame was not taken. Anything else may have reached
+          // the device already, and resending would type the keys twice.
           retries += 1
-          if (!chars || retries > QUEUE_FULL_RETRIES) throw error
-          await readStatus() // likely queue full on a stale estimate: refresh and retry
+          if (!chars || !hasAttError(error, ATT_ERROR.QUEUE_FULL) || retries > QUEUE_FULL_RETRIES) throw error
+          await readStatus() // stale estimate: refresh and retry
           continue
         }
       }
@@ -390,6 +433,9 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     },
     get justRegistered() {
       return justRegistered
+    },
+    get registeredWithoutCode() {
+      return justRegistered && registeredWithoutCode
     },
     get connecting() {
       return connecting !== null

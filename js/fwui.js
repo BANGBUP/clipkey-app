@@ -1,6 +1,7 @@
 // Settings: firmware version and over-the-air update (latest from this site, or a .ckfw file).
 
-import { SECURE_MSG } from './constants.js'
+import { SECURE_MSG, ATT_ERROR } from './constants.js'
+import { hasAttError, isDeviceRejection } from './ble.js'
 import {
   parseCkfw,
   encodeOtaBegin,
@@ -89,11 +90,20 @@ export function setupFirmwareUi({ client, notify }) {
     $('fwText').textContent = text ?? `${Math.floor((sent / Math.max(total, 1)) * 100)}%`
   }
 
-  async function sendWithRetry(frame) {
+  // A DATA write whose response got lost may still have reached the device. Writes are
+  // ordered, so if a resend is refused as out of order (OTA_OFFSET), the device already has
+  // this chunk: carry on with the next one.
+  async function sendWithRetry(frame, { isData = false } = {}) {
+    let mayHaveLanded = false // an earlier try failed without the device refusing it
     for (let attempt = 1; ; attempt += 1) {
       try {
         return await client.send(frame)
       } catch (error) {
+        if (isData && mayHaveLanded && hasAttError(error, ATT_ERROR.OTA_OFFSET)) {
+          log('chunk had already arrived (resend refused as out of order)')
+          return undefined
+        }
+        mayHaveLanded ||= !isDeviceRejection(error) // a device refusal means nothing was written
         if (attempt >= CHUNK_RETRIES || !client.connected) throw error
         await new Promise((r) => setTimeout(r, 300))
       }
@@ -117,7 +127,7 @@ export function setupFirmwareUi({ client, notify }) {
       const started = Date.now()
       for (let offset = 0; offset < total; offset += OTA_CHUNK) {
         if (cancelled) throw new Error('취소했습니다')
-        await sendWithRetry(encodeOtaData(offset, pkg.image.subarray(offset, offset + OTA_CHUNK)))
+        await sendWithRetry(encodeOtaData(offset, pkg.image.subarray(offset, offset + OTA_CHUNK)), { isData: true })
         progress(Math.min(offset + OTA_CHUNK, total), total)
       }
       progress(total, total, '확인·설치 중…')

@@ -1,7 +1,7 @@
-// Turns text (or a live edit) into KEYS frames and streams them through the client.
+// Turns text (or single keys) into KEYS frames and streams them through the client.
 
 import { textToOps } from './keymap.js'
-import { encodeKeyFrames, backspaceOps, encodeCancel } from './protocol.js'
+import { encodeKeyFrames, encodeCancel } from './protocol.js'
 
 /**
  * @param {ReturnType<import('./ble.js').createClient>} client
@@ -34,7 +34,7 @@ export function createSender(client, onProgress) {
     }
   }
 
-  // Jobs run strictly in order so live edits never interleave.
+  // Jobs run strictly in order so texts and keys never interleave.
   function enqueue(ops, skipped) {
     const jobGeneration = generation
     const run = chain.then(async () => {
@@ -57,13 +57,16 @@ export function createSender(client, onProgress) {
     return enqueue(ops, skipped)
   }
 
-  function sendEdit({ backspaces, insert }) {
-    const { ops, skipped } = textToOps(insert)
-    return enqueue([...backspaceOps(backspaces), ...ops], skipped)
-  }
-
   function sendOps(ops) {
     return enqueue(ops, 0)
+  }
+
+  /** Sends one non-KEYS frame (e.g. 한/영) after everything queued before it. */
+  function sendFrame(frame) {
+    const jobGeneration = generation
+    const run = chain.then(() => (jobGeneration === generation ? client.send(frame) : undefined))
+    chain = run.catch(() => undefined)
+    return run
   }
 
   async function cancel() {
@@ -73,8 +76,8 @@ export function createSender(client, onProgress) {
 
   return Object.freeze({
     sendText,
-    sendEdit,
     sendOps,
+    sendFrame,
     cancel,
     get active() {
       return active

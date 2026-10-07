@@ -89,13 +89,26 @@ textarea:disabled { opacity: 0.5; }
 .progress progress { flex: 1; height: 10px; }
 .hidden { display: none !important; }
 
-.keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+/* On-screen extended keyboard */
+.vkeyboard { display: flex; flex-direction: column; gap: 12px; }
+.vkeyboard.disabled { opacity: 0.5; }
+.vk-section { display: flex; flex-direction: column; gap: 6px; }
+.vk-row { display: flex; gap: 6px; }
+.vk-row .key { flex: 1 1 0; min-width: 0; }
+.vk-main { gap: 3px; }
+.vk-main .key { padding: 10px 0; font-size: 14px; border-radius: 6px; }
+.vk-main .vk-space { flex-grow: 4; }
 .key {
-  font: inherit; padding: 14px 0; border-radius: 10px; border: 1px solid var(--border);
-  background: var(--surface); color: var(--text);
+  font: inherit; padding: 12px 0; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); touch-action: manipulation;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15;
+  overflow: hidden; white-space: nowrap;
 }
+.key small { font-size: 10px; color: var(--muted); }
+.key.small-label { font-size: 13px; }
 .key:active { background: var(--border); }
-.key.wide2 { grid-column: span 2; }
+.key.mod.armed { border-color: var(--primary); color: var(--primary); font-weight: 700; }
+.key.mod.locked { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 700; }
 
 .hint { color: var(--muted); font-size: 13px; margin: 0; }
 .field { display: flex; flex-direction: column; gap: 6px; }

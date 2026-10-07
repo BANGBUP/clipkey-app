@@ -1,6 +1,6 @@
 // Binary encoding of frames sent to / received from the firmware.
 
-import { OP, ITEM, FRAME, AUTH_FRAME, STATUS_FLAG, KEY, KEEP_AWAKE, KEEP_AWAKE_KEYS, USB_MODE, PAIR_ACTION, CAPS } from './constants.js'
+import { OP, ITEM, FRAME, AUTH_FRAME, STATUS_FLAG, KEEP_AWAKE, KEEP_AWAKE_KEYS, USB_MODE, PAIR_ACTION, CAPS, HOST_LED, REGISTER_DEFAULT_CODE } from './constants.js'
 
 export const MAX_ITEMS_PER_FRAME = 90 // 1 + 90*2 = 181 bytes, fits one long write comfortably
 
@@ -26,9 +26,6 @@ export function encodeKeyFrames(ops, maxItems = MAX_ITEMS_PER_FRAME) {
   }
   return frames
 }
-
-export const backspaceOps = (count) =>
-  Array.from({ length: count }, () => ({ type: OP.TAP, key: KEY.BACKSPACE, mod: 0 }))
 
 export const encodeSetIme = (hangul) => Uint8Array.of(FRAME.SET_IME, hangul ? 1 : 0)
 export const encodeCancel = () => Uint8Array.of(FRAME.CANCEL)
@@ -81,6 +78,7 @@ export function encodeSetImeSettle(ms) {
 /** New phone setup code (4-12 digits) for this ClipKey. */
 export function encodeSetSetupCode(code) {
   if (!/^\d{4,12}$/.test(code)) throw new Error('설정 코드는 숫자 4~12자리입니다')
+  if (code === REGISTER_DEFAULT_CODE) throw new Error(`${REGISTER_DEFAULT_CODE}은 설정 코드로 쓸 수 없습니다`)
   return Uint8Array.from([FRAME.SET_SETUP_CODE, ...new TextEncoder().encode(code)])
 }
 
@@ -110,6 +108,8 @@ export function parseAuthRead(view) {
 /**
  * Status layout (little endian): [flags u8][queue_free u16][queue_used u16][keep_awake_s u16][mod u8][key u8]
  *                                [pair_action u8][0 u32 (PIN is sent encrypted)][caps u8][host profile u8][active PC conn u8]
+ *                                [target kind u8][host LEDs u8]
+ * An unauthenticated read is all zeros except the caps byte.
  * @param {DataView} view
  */
 export function parseStatus(view) {
@@ -134,8 +134,15 @@ export function parseStatus(view) {
     passkey: view.byteLength >= 14 ? view.getUint32(10, true) : 0,
     usbOtg: view.byteLength >= 15 ? (view.getUint8(14) & CAPS.USB_OTG) !== 0 : true,
     noSetupCode: view.byteLength >= 15 && (view.getUint8(14) & CAPS.NO_SETUP_CODE) !== 0,
+    regWindow: view.byteLength >= 15 && (view.getUint8(14) & CAPS.REG_WINDOW) !== 0,
+    // Firmware with the 19-byte status registers phones with the BOOT button; older firmware
+    // used a first-phone-only default code instead.
+    bootRegistration: view.byteLength >= 19,
     hostProfile: view.byteLength >= 16 ? view.getUint8(15) : 0,
     activeConn: view.byteLength >= 17 && view.getUint8(16) !== 0xff ? view.getUint8(16) : null,
     targetKind: view.byteLength >= 18 ? view.getUint8(17) : null, // 0 none, 1 wired, 2 Bluetooth
+    // Older firmware has no LED byte: undefined hides the Num / Scroll Lock chips.
+    numLock: view.byteLength >= 19 ? (view.getUint8(18) & HOST_LED.NUM_LOCK) !== 0 : undefined,
+    scrollLock: view.byteLength >= 19 ? (view.getUint8(18) & HOST_LED.SCROLL_LOCK) !== 0 : undefined,
   })
 }

@@ -22,6 +22,8 @@
     <div class="chips" id="chips">
       <span class="chip" data-chip="link">기기 미연결</span>
       <span class="chip" data-chip="caps">Caps</span>
+      <span class="chip hidden" data-chip="num">Num</span>
+      <span class="chip hidden" data-chip="scroll">Scroll</span>
       <span class="chip" data-chip="usb">USB</span>
     </div>
     <div class="pc-row">
@@ -36,7 +38,7 @@
 
   <nav class="tabs" role="tablist">
     <button role="tab" class="tab active" data-tab="send">보내기</button>
-    <button role="tab" class="tab" data-tab="live">실시간</button>
+    <button role="tab" class="tab" data-tab="keys">키보드</button>
     <button role="tab" class="tab" data-tab="settings">설정</button>
   </nav>
 
@@ -71,22 +73,9 @@
       </div>
     </section>
 
-    <section id="tab-live" class="panel">
-      <p class="hint">여기에 입력하는 내용이 그대로 PC에 타이핑됩니다. PC의 커서는 입력한 위치 끝에 있다고 가정합니다.</p>
-      <textarea id="liveText" rows="6" placeholder="여기에 입력하세요" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
-      <div class="keypad">
-        <button class="key" data-key="esc">Esc</button>
-        <button class="key" data-key="tab">Tab</button>
-        <button class="key" data-key="up">↑</button>
-        <button class="key" data-key="backspace">⌫</button>
-        <button class="key" data-key="ime">한/영</button>
-        <button class="key" data-key="left">←</button>
-        <button class="key" data-key="down">↓</button>
-        <button class="key" data-key="right">→</button>
-        <button class="key wide2" data-key="enter">Enter ⏎</button>
-        <button class="key wide2" id="liveReset">입력칸 비우기</button>
-      </div>
-      <label class="check"><input type="checkbox" id="liveComposing"> 글자 조합 중에도 바로 전송 (빠르지만 PC에서 지웠다 다시 쓰는 일이 많음)</label>
+    <section id="tab-keys" class="panel">
+      <p class="hint">누르는 즉시 PC로 입력됩니다. Ctrl·Shift·Alt·Win은 한 번 누르면 다음 키 하나에만, 두 번 누르면 다시 누를 때까지 적용됩니다.</p>
+      <div id="vkeyboard" class="vkeyboard"></div>
     </section>
 
     <section id="tab-settings" class="panel">
@@ -166,10 +155,11 @@
             placeholder="새 코드 (숫자 4~12자리)" autocomplete="off">
           <button id="setupCodeBtn" class="btn">변경</button>
         </div>
+        <p class="hint">설정 코드가 있으면 다른 폰을 BOOT 버튼 없이 등록할 수 있습니다. 0000처럼 쉬운 코드는 피하세요.</p>
       </div>
       <label class="check"><input type="checkbox" id="debugEnabled"> 디버그 로그 표시 (화면 아래, 앱 시작부터 기록)</label>
       <div class="field">
-        <p class="hint">폰 등록에는 기기의 설정 코드가 필요합니다. 기기를 초기화하려면 BOOT 버튼을 5초 누르세요(등록된 폰·PC 모두 삭제).</p>
+        <p class="hint">폰 등록에는 기기의 설정 코드가 필요합니다. 코드 없이 등록하려면 기기의 BOOT 버튼을 짧게 누른 뒤 60초 안에 등록하세요. 기기를 초기화하려면 BOOT 버튼을 5초 누르세요(등록된 폰·PC 모두 삭제).</p>
         <button id="reregisterBtn" class="btn">이 폰 다시 등록</button>
         <button id="disconnectBtn" class="btn">연결 끊기</button>
       </div>
@@ -190,12 +180,15 @@
   <dialog id="codeDialog" class="dialog">
     <form method="dialog">
       <h2 class="plain">기기 등록</h2>
-      <p>이 폰을 ClipKey에 등록합니다. 기기의 <b>설정 코드</b>를 입력하세요. 처음 쓰는 기기는 <b>0000</b>입니다.</p>
+      <p>이 폰을 ClipKey에 등록합니다. 기기의 <b>설정 코드</b>를 입력하세요.</p>
+      <p class="hint" data-boot>코드를 모르면 기기의 <b>BOOT 버튼을 짧게 한 번</b> 누른 뒤(60초 동안 코드 없이 1대 등록 가능) "BOOT 눌렀음"을 누르세요.</p>
       <input id="codeInput" class="code-input" type="password" inputmode="numeric" autocomplete="off"
         pattern="[0-9]{4,12}" minlength="4" maxlength="12" placeholder="숫자 코드" required>
       <div class="row">
+        <!-- 등록 comes first in the DOM so Enter registers (CSS shows it last). -->
+        <button value="ok" class="btn primary grow order-last">등록</button>
         <button value="cancel" formnovalidate class="btn grow">취소</button>
-        <button value="ok" class="btn primary grow">등록</button>
+        <button value="boot" formnovalidate class="btn grow" data-boot>BOOT 눌렀음</button>
       </div>
     </form>
   </dialog>

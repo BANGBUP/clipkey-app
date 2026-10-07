@@ -3,7 +3,8 @@
 import { createClient, isSupported } from './ble.js'
 import { unsupportedChars } from './keymap.js'
 import { createSender } from './sender.js'
-import { setupLive } from './live.js'
+import { setupKeyboard } from './keyboard.js'
+import { setupSetupCode } from './setupcode.js'
 import { setupUsbMode } from './usbmode.js'
 import { setupPcPairing } from './pcpair.js'
 import { setupHostsUi } from './hostsui.js'
@@ -30,7 +31,6 @@ import {
   encodeSetToggleKey,
   encodeSetDelay,
   encodeSetImeSettle,
-  encodeSetSetupCode,
   encodeSetKeepAwake,
   keepAwakeKeyId,
 } from './protocol.js'
@@ -81,7 +81,8 @@ function setChip(name, text, state) {
 }
 
 let settings = loadSettings()
-let live = null
+let keyboard = null
+let setupCode = null
 let usbMode = null
 let pcPair = null
 let hostsUi = null
@@ -111,17 +112,27 @@ function renderIme(status) {
   badge.classList.toggle('english', Boolean(status) && !status.imeHangul)
 }
 
+// Num / Scroll Lock of the PC getting keystrokes (older firmware does not report them).
+function renderLockChips(status) {
+  for (const [name, label, on] of [['num', 'Num Lock', status?.numLock], ['scroll', 'Scroll Lock', status?.scrollLock]]) {
+    setChip(name, label, on ? 'on' : '')
+    document.querySelector(`[data-chip="${name}"]`).classList.toggle('hidden', on === undefined)
+  }
+}
+
 function renderStatus(status) {
   const connected = Boolean(status)
   setChip('link', connected ? `${deviceLabel()} 연결됨` : '기기 미연결', connected ? 'on' : 'bad')
   $('connectBtn').textContent = connected ? '연결됨' : '연결'
   $('connectBtn').disabled = connected
-  live?.setEnabled(connected)
+  keyboard?.setEnabled(connected)
+  keyboard?.setApple(connected && isAppleHost())
   if (!connected) {
     setChip('pc', 'PC')
     document.querySelector('[data-chip="pc"]').title = ''
     renderIme(null)
     setChip('caps', 'Caps')
+    renderLockChips(null)
     setChip('usb', 'USB')
     $('imeBelief').textContent = '-'
     renderKeepAwake(null)
@@ -135,10 +146,10 @@ function renderStatus(status) {
   }
   const hostKind = status.hostProfile === HOST_PROFILE.APPLE ? ' (iPad/Mac)' : status.hostProfile ? ' (Windows)' : ''
   setChip('pc', status.pcConnected ? 'PC 연결됨' : 'PC 미연결', status.pcConnected ? 'on' : 'warn')
-  if (status.noSetupCode) setChip('link', `${deviceLabel()} · 기본 코드 사용 중`, 'warn')
   document.querySelector('[data-chip="pc"]').title = hostKind.trim()
   renderIme(status)
   setChip('caps', 'Caps Lock', status.capsLock ? 'warn' : '')
+  renderLockChips(status)
   if (status.hostMode) {
     setChip('usb', status.usbKeyboard ? 'USB 키보드 연결됨' : 'USB 키보드 없음', status.usbKeyboard ? 'on' : '')
   } else {
@@ -219,35 +230,7 @@ async function pushSettings() {
   hostsUi?.refresh()
 }
 
-// Asks for the device's setup code (only needed the first time this phone registers).
-function askSetupCode() {
-  const dialog = $('codeDialog')
-  const input = $('codeInput')
-  input.value = ''
-  return new Promise((resolve) => {
-    dialog.onclose = () => resolve(dialog.returnValue === 'ok' && /^\d{4,12}$/.test(input.value) ? input.value : null)
-    dialog.returnValue = ''
-    dialog.showModal()
-    input.focus()
-  })
-}
-
 // The 연결 button: always show the chooser first (it needs the fresh tap), then connect.
-// A fresh ClipKey accepts the default code 0000 for its first phone only: set a real one now.
-async function askForSetupCode() {
-  const code = prompt('이 ClipKey는 아직 기본 설정 코드(0000)입니다.\n다른 폰을 등록할 때 쓸 새 설정 코드를 정하세요 (숫자 4~12자리):')
-  if (code === null) {
-    notify('설정 코드를 정하지 않았습니다. 설정 → 설정 코드 변경에서 정할 수 있습니다 (그 전에는 다른 폰을 등록할 수 없음)')
-    return
-  }
-  try {
-    await client.send(encodeSetSetupCode(code.trim()))
-    notify('설정 코드를 저장했습니다. 다른 폰은 이 코드로 등록합니다')
-  } catch (error) {
-    notify(`설정 코드 저장 실패: ${error.message}`)
-  }
-}
-
 async function connectFromButton(options = {}) {
   reconnector.stop() // no await: the chooser must open within the tap
   try {
@@ -264,10 +247,10 @@ async function connect(options = {}) {
   await reconnector.stop() // a manual connect replaces any background retry (and waits for it)
   userDisconnected = false
   try {
-    const status = await client.connect({ reuse: true, getSetupCode: askSetupCode, ...options })
+    const status = await client.connect({ reuse: true, getSetupCode: (info) => setupCode.ask(info), ...options })
     await pushSettings()
+    if (client.registeredWithoutCode) await setupCode.offer()
     if (client.justRegistered) nickname?.askAfterRegister()
-    if (status.noSetupCode) askForSetupCode()
     if (!status.pcConnected) notify('기기에 연결했습니다. PC가 아직 연결되지 않았습니다(USB 케이블 또는 설정 → PC 블루투스 연결 추가)')
   } catch (error) {
     if (error?.name === 'NotFoundError') return // chooser dismissed
@@ -279,6 +262,12 @@ async function connect(options = {}) {
     notify(error instanceof Error ? error.message : `연결 실패 (오류 ${String(error)}) - 다시 시도하세요`)
     client.disconnect()
   }
+}
+
+// Mirrors the firmware: Apple hosts (Ctrl+Space switching) get no Caps Lock compensation.
+function isAppleHost() {
+  const profile = client.status?.hostProfile ?? HOST_PROFILE.AUTO
+  return profile === HOST_PROFILE.APPLE || (profile === HOST_PROFILE.AUTO && settings.toggleKey === 'ctrlspace')
 }
 
 /** Types `text` on the PC. Resolves true when every key was sent. */
@@ -459,29 +448,11 @@ function init() {
   // Offline the service worker serves the last downloaded copy, which may be older.
   $('appVersion').textContent = `v${APP_VERSION}${navigator.onLine ? '' : ' · 오프라인 저장본'}`
   firmwareUi = setupFirmwareUi({ client, notify })
-  $('setupCodeBtn').addEventListener('click', async () => {
-    const code = $('setupCodeInput').value
-    if (!client.connected) return notify('먼저 기기에 연결하세요')
-    try {
-      await client.send(encodeSetSetupCode(code))
-      $('setupCodeInput').value = ''
-      notify('설정 코드를 바꿨습니다. 이미 등록된 폰은 그대로 쓸 수 있습니다')
-    } catch (error) {
-      notify(`설정 코드 변경 실패: ${error.message}`)
-    }
-  })
+  setupCode = setupSetupCode({ client, notify })
   phrases = setupPhrases({ sendText, fillInput: (text) => ($('sendText').value = text), notify })
   nickname = setupNickname({ client, notify, onChange: () => client.status && renderStatus(client.status) })
   hostsUi.render()
-  live = setupLive({
-    field: $('liveText'),
-    keypad: document.querySelector('.keypad'),
-    resetBtn: $('liveReset'),
-    composingToggle: $('liveComposing'),
-    client,
-    sender,
-    notify,
-  })
+  keyboard = setupKeyboard({ root: $('vkeyboard'), client, sender, notify, isApple: isAppleHost })
   renderStatus(null)
   applyShareTarget()
   $('connectBtn').addEventListener('click', () => connectFromButton())

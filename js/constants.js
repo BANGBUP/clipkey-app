@@ -15,7 +15,7 @@ export const ATT_ERROR = Object.freeze({
   AUTH_FAILED: 0x82,
   LOCKED: 0x84,
   BUSY: 0x85, // still typing
-  NO_SETUP_CODE: 0x86, // the device has no setup code yet (set it over USB)
+  NO_SETUP_CODE: 0x86, // no setup code stored and the BOOT registration window is closed
   OTA_REJECTED: 0x87, // bad signature / wrong chip / bad hash
   OTA_OFFSET: 0x88,
   OTA_FAILED: 0x89,
@@ -43,7 +43,7 @@ export const FRAME = Object.freeze({
   CANCEL: 0x12, // [0x12]       drop queued items
   TOGGLE_IME: 0x13, // [0x13]     actually press the hangul/english key
   SET_TOGGLE_KEY: 0x14, // [0x14, mod, key]
-  SET_DELAY: 0x15, // [0x15, ms]
+  SET_DELAY: 0x15, // [0x15, ms, apple_ms]  key interval: Windows-style hosts / iPad·Mac
   SET_KEEP_AWAKE: 0x16, // [0x16, seconds u16 LE, mod, key]  0 seconds = off
   SET_USB_MODE: 0x17, // [0x17, 0 device | 1 host]  saved, then the device reboots
   PC_PAIRING: 0x18, // [0x18, 1 open | 0 close]  Bluetooth PC pairing window (60 s, one PC)
@@ -55,7 +55,7 @@ export const FRAME = Object.freeze({
   SET_NICKNAME: 0x1e, // [0x1e, utf8 x0..30]  shown in PC / tablet Bluetooth lists and the app
   SET_HOST_ALIAS: 0x1f, // [0x1f, addr type, addr x6, utf8 x0..30]  user label for a paired PC
   SELECT_TARGET: 0x20, // [0x20, kind, addr type, addr x6]  which connected PC gets keystrokes
-  SET_SETUP_CODE: 0x21, // [0x21, ascii digits x4..12]
+  SET_SETUP_CODE: 0x21, // [0x21, ascii digits x4..12] (0000 is refused)
   OTA_BEGIN: 0x22, // [0x22, .ckfw header x132]
   OTA_DATA: 0x23, // [0x23, offset u32 LE, bytes...]
   OTA_END: 0x24, // [0x24] verify, activate, reboot
@@ -145,7 +145,20 @@ export const STATUS_FLAG = Object.freeze({
 // STATUS caps byte
 export const CAPS = Object.freeze({
   USB_OTG: 1 << 0, // ESP32-S3: wired keyboard / USB host modes exist (original ESP32: Bluetooth only)
-  NO_SETUP_CODE: 1 << 1, // phones cannot register until a setup code is set over USB
+  NO_SETUP_CODE: 1 << 1, // no setup code stored: phones register only via the BOOT window
+  REG_WINDOW: 1 << 2, // BOOT was pressed: one phone may register with REGISTER_DEFAULT_CODE (60 s)
+})
+
+// Setup code used while the BOOT registration window is open (no code needed then).
+export const REGISTER_DEFAULT_CODE = '0000'
+
+export const STATUS_LEN = 19 // bytes in a full STATUS read (older firmware sends fewer)
+
+// STATUS byte 18: HID LED bits of the PC currently receiving keystrokes.
+export const HOST_LED = Object.freeze({
+  NUM_LOCK: 0x01,
+  CAPS_LOCK: 0x02,
+  SCROLL_LOCK: 0x04,
 })
 
 export const MOD = Object.freeze({
