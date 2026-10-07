@@ -289,7 +289,10 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
 
   /** Reconnects to a previously permitted device without a chooser, if the browser allows it. */
   async function reconnectKnown() {
-    if (!isSupported() || typeof navigator.bluetooth.getDevices !== 'function') return null
+    if (!isSupported() || typeof navigator.bluetooth.getDevices !== 'function') {
+      log('startup: auto-connect unavailable (this Chrome has no bluetooth.getDevices) - press 연결')
+      return null
+    }
     // Only a ClipKey this phone is registered with: registering needs the user.
     const devices = await navigator.bluetooth.getDevices()
     const known = devices.find((d) => d.name?.startsWith(DEVICE_NAME) && tokenStore.load(d.id))
