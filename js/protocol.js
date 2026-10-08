@@ -135,6 +135,7 @@ export function parseStatus(view) {
     usbOtg: view.byteLength >= 15 ? (view.getUint8(14) & CAPS.USB_OTG) !== 0 : true,
     noSetupCode: view.byteLength >= 15 && (view.getUint8(14) & CAPS.NO_SETUP_CODE) !== 0,
     regWindow: view.byteLength >= 15 && (view.getUint8(14) & CAPS.REG_WINDOW) !== 0,
+    typingStopped: view.byteLength >= 15 && (view.getUint8(14) & CAPS.TYPING_STOPPED) !== 0,
     // Firmware with the 19-byte status registers phones with the BOOT button; older firmware
     // used a first-phone-only default code instead.
     bootRegistration: view.byteLength >= 19,

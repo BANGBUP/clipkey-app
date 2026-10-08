@@ -2,6 +2,8 @@
 
 import { textToOps } from './keymap.js'
 import { encodeKeyFrames, encodeCancel } from './protocol.js'
+import { hasAttError } from './ble.js'
+import { ATT_ERROR } from './constants.js'
 
 /**
  * @param {ReturnType<import('./ble.js').createClient>} client
@@ -11,6 +13,7 @@ export function createSender(client, onProgress) {
   // cancel() bumps the generation; every job queued before that becomes stale and is dropped.
   let generation = 0
   let active = false
+  let stopReason = null // 'user' | 'device', for the job that ends because of it
   let chain = Promise.resolve()
 
   /** @returns {Promise<boolean>} true when every op was handed to the device */
@@ -23,7 +26,13 @@ export function createSender(client, onProgress) {
     try {
       for (const frame of frames) {
         if (isCancelled()) return false
-        await client.sendKeys(frame, isCancelled)
+        try {
+          await client.sendKeys(frame, isCancelled)
+        } catch (error) {
+          if (!hasAttError(error, ATT_ERROR.STOPPED)) throw error
+          stopLocal() // the device refused: someone pressed its BOOT button
+          return false
+        }
         if (isCancelled()) return false
         sent += (frame.length - 1) / 2
         onProgress({ sent, total, active: true })
@@ -38,11 +47,12 @@ export function createSender(client, onProgress) {
   function enqueue(ops, skipped) {
     const jobGeneration = generation
     const run = chain.then(async () => {
-      if (jobGeneration !== generation) return { skipped, items: 0, completed: false }
+      if (jobGeneration !== generation) return { skipped, items: 0, completed: false, stopReason }
       active = true
+      stopReason = null
       try {
         const completed = ops.length === 0 || (await streamOps(ops, jobGeneration))
-        return { skipped, items: ops.length, completed }
+        return { skipped, items: ops.length, completed, stopReason: completed ? null : stopReason }
       } finally {
         active = false
       }
@@ -71,7 +81,14 @@ export function createSender(client, onProgress) {
 
   async function cancel() {
     generation += 1
+    stopReason = 'user'
     if (client.connected) await client.send(encodeCancel())
+  }
+
+  /** The device already stopped (BOOT button): drop what is left here without a frame. */
+  function stopLocal() {
+    generation += 1
+    stopReason = 'device'
   }
 
   return Object.freeze({
@@ -79,6 +96,7 @@ export function createSender(client, onProgress) {
     sendOps,
     sendFrame,
     cancel,
+    stopLocal,
     get active() {
       return active
     },

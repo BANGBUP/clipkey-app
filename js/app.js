@@ -7,6 +7,7 @@ import { setupKeyboard } from './keyboard.js'
 import { setupSetupCode } from './setupcode.js'
 import { setupPcReceive } from './pcrxui.js'
 import { setupSendStats } from './sendstats.js'
+import { setupTypingBar } from './typingbar.js'
 import { createEventFilter, formatDeviceEvent } from './devevents.js'
 
 const isNewEvent = createEventFilter() // device events repeat after every sign-in
@@ -141,6 +142,8 @@ function renderLeds(status) {
 
 function renderStatus(status) {
   sendStats?.update() // the target PC (Apple or not) changes the estimate
+  typingBar?.onStatus(status)
+  if (status?.typingStopped && sender.active) sender.stopLocal() // stopped on the device itself
   if (status) firmwareUi?.onStatus()
   const connected = Boolean(status)
   setChip('link', connected ? `${deviceLabel()} 연결됨` : '기기 미연결', connected ? 'on' : 'bad')
@@ -237,13 +240,8 @@ const reconnector = createReconnector({
   onAttemptFailed: () => client.disconnect(),
 })
 
-const sender = createSender(client, ({ sent, total, active }) => {
-  const box = $('progressBox')
-  box.classList.toggle('hidden', !active || total < 20)
-  $('progress').max = Math.max(total, 1)
-  $('progress').value = sent
-  $('progressText').textContent = `${sent}/${total}`
-})
+let typingBar = null
+const sender = createSender(client, (progress) => typingBar?.onSending(progress))
 
 async function pushSettings() {
   await client.send(encodeSetToggleKey(TOGGLE_KEYS[settings.toggleKey]))
@@ -304,9 +302,9 @@ async function sendText(text, { record = true } = {}) {
   }
   try {
     log(`send ${[...text].length} chars`)
-    const { skipped, completed } = await sender.sendText(text)
+    const { skipped, completed, stopReason } = await sender.sendText(text)
     log(`send done completed=${completed} skipped=${skipped}`)
-    if (!completed) notify('취소했습니다')
+    if (!completed) notify(stopReason === 'device' ? '기기의 BOOT 버튼으로 타이핑을 멈췄습니다' : '타이핑을 멈췄습니다')
     else if (skipped > 0) notify(`완료 · 건너뛴 문자 ${skipped}개: ${unsupportedChars(text).join(' ')}`)
     else notify('타이핑 완료')
     if (completed && record) phrases?.record(text)
@@ -360,7 +358,13 @@ function wireSend() {
   })
   // Clipboard sends are never recorded: that is where copied passwords come from.
   $('pasteSendBtn').addEventListener('click', async () => sendText(await readClipboard(), { record: false }))
-  $('cancelBtn').addEventListener('click', () => sender.cancel().catch((e) => notify(e.message)))
+  typingBar = setupTypingBar({
+    bar: $('typingBar'),
+    progress: $('progress'),
+    text: $('progressText'),
+    button: $('cancelBtn'),
+    onStop: () => sender.cancel().catch((e) => notify(errorText(e))),
+  })
 }
 
 // The device is the source of truth for keep-awake; the UI mirrors its status.

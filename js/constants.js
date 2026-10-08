@@ -12,6 +12,7 @@ export const DEVICE_NAME = 'ClipKey' // devices advertise "ClipKey-XXXX" (end of
 
 export const ATT_ERROR = Object.freeze({
   QUEUE_FULL: 0x80,
+  STOPPED: 0x8a, // typing was stopped with the device's BOOT button
   AUTH_FAILED: 0x82,
   LOCKED: 0x84,
   BUSY: 0x85, // still typing
@@ -156,6 +157,7 @@ export const STATUS_FLAG = Object.freeze({
 export const CAPS = Object.freeze({
   USB_OTG: 1 << 0, // ESP32-S3: wired keyboard / USB host modes exist (original ESP32: Bluetooth only)
   NO_SETUP_CODE: 1 << 1, // no setup code stored: phones register only via the BOOT window
+  TYPING_STOPPED: 1 << 3, // BOOT pressed while typing: the app must stop sending too
   REG_WINDOW: 1 << 2, // BOOT was pressed: one phone may register with REGISTER_DEFAULT_CODE (60 s)
 })
 

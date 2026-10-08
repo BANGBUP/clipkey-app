@@ -72,11 +72,6 @@
         <div id="historyList" class="phrase-list"></div>
       </details>
 
-      <div id="progressBox" class="progress hidden">
-        <progress id="progress" max="1" value="0"></progress>
-        <span id="progressText"></span>
-        <button id="cancelBtn" class="btn danger small">취소</button>
-      </div>
     </section>
 
     <section id="tab-keys" class="panel">
@@ -191,6 +186,12 @@
       </div>
     </section>
   </main>
+
+  <div id="typingBar" class="typing-bar hidden" role="status" aria-live="polite">
+    <progress id="progress" max="1" value="0"></progress>
+    <span id="progressText"></span>
+    <button id="cancelBtn" class="btn danger">■ 중지</button>
+  </div>
 
   <section id="debugPanel" class="debug-panel hidden">
     <div class="row">
