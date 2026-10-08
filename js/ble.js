@@ -116,9 +116,12 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
   // Encrypted device -> phone messages (PIN prompts, paired-device list).
   // Decrypt in arrival order so the replay counter never drops a genuine message.
   let secureChain = Promise.resolve()
+  let secureSeen = 0 // per session, for the debug log
+  let secureFailed = 0
   const handleSecure = (event) => {
     const v = event.target.value
     const bytes = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength))
+    if (secureSeen++ === 0) log(`first secure message (${bytes.length} bytes)`)
     secureChain = secureChain.then(async () => {
       if (!session) return
       try {
@@ -126,8 +129,10 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
         if (counter <= lastDeviceCounter) return // replayed
         lastDeviceCounter = counter
         onSecure(parseSecureMessage(frame))
-      } catch {
-        // tampered or stale message: ignore
+      } catch (error) {
+        // Tampered, stale or cut short (a link that never raised its MTU): ignored, but
+        // said once so a silent app can be diagnosed.
+        if (secureFailed++ < 3) log(`secure message ignored (${bytes.length} bytes): ${error?.message ?? error}`)
       }
     })
   }
@@ -243,7 +248,11 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     const { token, nonce } = creds
     session = { key: await deriveSessionKey(token, nonce), counter: 1 }
     lastDeviceCounter = -1
-    linkChars().secure.oncharacteristicvaluechanged = handleSecure
+    secureSeen = 0
+    secureFailed = 0
+    // addEventListener, not the on... property: some iOS Web BLE browsers (Bluefy) only
+    // deliver to listeners. Adding the same function twice is a no-op.
+    linkChars().secure.addEventListener('characteristicvaluechanged', handleSecure)
     await serialize(() => linkChars().secure.startNotifications())
     const s = await readStatus()
     if (!s.authed) throw new Error('인증 실패')
@@ -316,7 +325,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
       auth: await service.getCharacteristic(UUID.AUTH),
       secure: await service.getCharacteristic(UUID.SECURE),
     }
-    chars.status.oncharacteristicvaluechanged = handleStatus
+    chars.status.addEventListener('characteristicvaluechanged', handleStatus)
     await linkChars().status.startNotifications()
     return authenticate(forceRegister, getSetupCode)
   }
