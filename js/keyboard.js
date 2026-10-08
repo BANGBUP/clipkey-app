@@ -2,6 +2,7 @@
 // QWERTY block) that sends each key to the PC as soon as it is tapped.
 
 import { OP, MOD } from './constants.js'
+import { errorText } from './log.js'
 import { encodeToggleIme } from './protocol.js'
 import {
   KEYS,
@@ -107,7 +108,7 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
       el.setAttribute('aria-pressed', ARIA_PRESSED[state])
     })
 
-  const report = (error) => notify(`전송 실패: ${error.message}`)
+  const report = (error) => notify(`전송 실패: ${errorText(error)}`)
 
   // Every key, 한/영 included, goes through the sender chain so taps arrive in order.
   function send(item) {

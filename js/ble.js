@@ -44,6 +44,10 @@ const isTransientGattError = (error) =>
     error instanceof DOMException &&
     !['NotFoundError', 'SecurityError', 'NotAllowedError', 'AbortError'].includes(error.name))
 const QUEUE_FULL_RETRIES = 20
+// Within this many free queue slots of full, re-read STATUS before each frame: estimates from
+// notifications can be stale, and some browsers (iOS Bluefy) report the device's "queue full"
+// refusal only as a bare number, which cannot be told apart from a real failure.
+const NEAR_FULL_SLOTS = 270
 
 // Chrome reports ATT application errors only inside the message text.
 export function hasAttError(error, code) {
@@ -422,9 +426,16 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
   async function sendKeys(frame, isCancelled = () => false) {
     const needed = (frame.length - 1) / 2
     let retries = 0
+    let fresh = false // status was just read from the device, not estimated
     while (!isCancelled()) {
       if (!chars) throw new Error('연결이 끊겼습니다')
       if (status && status.queueFree >= needed) {
+        if (!fresh && status.queueFree < needed + NEAR_FULL_SLOTS) {
+          await readStatus()
+          fresh = true
+          continue
+        }
+        fresh = false
         status = { ...status, queueFree: status.queueFree - needed }
         try {
           return await send(frame)
@@ -434,11 +445,13 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
           retries += 1
           if (!chars || !mayBeQueueFull(error) || retries > QUEUE_FULL_RETRIES) throw error
           await readStatus() // stale estimate: refresh and retry
+          fresh = true
           continue
         }
       }
       const next = await waitForStatus()
       if (next === undefined && chars) await readStatus()
+      fresh = next === undefined
     }
     return undefined
   }

@@ -28,7 +28,8 @@ const log = (m) => appLog.add(`[ota] ${m}`)
 /** @param {{ client, notify: (msg: string) => void }} deps */
 export function setupFirmwareUi({ client, notify }) {
   const $ = (id) => document.getElementById(id)
-  let device = null // { version, chip } from DEVICE_INFO
+  let device = null // { version, chip } from DEVICE_INFO, or { version: null, chip, guessed: true }
+  let guessTimer = null
   let running = false
   let cancelled = false
   let waiting = null // { phase, resolve } for the next OTA_RESULT
@@ -55,11 +56,25 @@ export function setupFirmwareUi({ client, notify }) {
 
   const updateAvailable = () => Boolean(device?.version && latest && compareVersions(latest.version, device.version) > 0)
 
+  // Some iOS Web BLE browsers drop the device-info message that arrives while notifications are
+  // being switched on. Without it the chip is still known from STATUS (USB-OTG = ESP32-S3), so
+  // updating stays possible; only the current version is unknown.
+  function guessDevice() {
+    guessTimer = null
+    if (device || !client.connected || !client.status) return
+    device = { version: null, chip: client.status.usbOtg ? 1 : 0, guessed: true }
+    log(`no device info received: assuming ${chipName(device.chip)}, version unknown`)
+    renderInfo()
+    refreshLatest()
+  }
+
   function renderInfo() {
     let text = '-'
     if (device?.version) {
       const state = !latest ? '' : updateAvailable() ? ` · 새 버전 ${latest.version} 있음` : ' · 최신'
       text = `${device.version} (${chipName(device.chip ?? 0)})${state}`
+    } else if (device?.guessed) {
+      text = `버전 확인 불가 (${chipName(device.chip)})${latest ? ` · 배포 버전 ${latest.version}` : ''}`
     }
     $('fwInfo').textContent = text
     $('fwInfo').classList.toggle('update-available', updateAvailable())
@@ -185,7 +200,7 @@ export function setupFirmwareUi({ client, notify }) {
     if (running) return
     try {
       const pkg = parseCkfw(await getBytes())
-      if (!confirm(`펌웨어 ${device.version} → ${pkg.version} 으로 업데이트할까요?\n약 1~3분 걸립니다(휴대폰에 따라 다름). 그동안 앱을 닫거나 화면을 끄지 마세요.`)) return
+      if (!confirm(`펌웨어 ${device.version ?? '(현재 버전 알 수 없음)'} → ${pkg.version} 으로 업데이트할까요?\n약 1~3분 걸립니다(휴대폰에 따라 다름). 그동안 앱을 닫거나 화면을 끄지 마세요.`)) return
       await upload(pkg)
     } catch (error) {
       notify(`펌웨어 업데이트 실패: ${error.message ?? error}`)
@@ -198,7 +213,7 @@ export function setupFirmwareUi({ client, notify }) {
       latest = entry
       renderInfo()
       if (!entry) return notify('이 기기용 배포 펌웨어가 아직 없습니다')
-      if (compareVersions(entry.version, device.version) <= 0) return notify(`최신 버전입니다 (${device.version})`)
+      if (device.version && compareVersions(entry.version, device.version) <= 0) return notify(`최신 버전입니다 (${device.version})`)
       await run(async () => new Uint8Array(await (await fetch(`firmware/${entry.file}`, { cache: 'no-store' })).arrayBuffer()))
     } catch (error) {
       notify(`최신 버전 확인 실패: ${error.message}`)
@@ -226,14 +241,21 @@ export function setupFirmwareUi({ client, notify }) {
         return
       }
       if (msg.type !== SECURE_MSG.DEVICE_INFO) return
+      clearTimeout(guessTimer)
       device = { version: msg.version, chip: msg.chip }
       renderInfo()
       refreshLatest()
     },
     reset() {
+      clearTimeout(guessTimer)
+      guessTimer = null
       device = null
       latest = null
       renderInfo()
+    },
+    /** Each STATUS while connected: waits a moment for DEVICE_INFO, then guesses. */
+    onStatus() {
+      if (!device && !guessTimer && client.connected) guessTimer = setTimeout(guessDevice, 3000)
     },
     get running() {
       return running

@@ -1,6 +1,7 @@
 // Settings: list of paired PCs / tablets, with type (Windows / Apple) and delete.
 
 import { SECURE_MSG, HOST_PROFILE_LABEL } from './constants.js'
+import { errorText } from './log.js'
 import {
   encodeListHosts,
   encodeDeleteHost,
@@ -28,7 +29,7 @@ export function setupHostsUi({ client, notify, onChange = () => {}, onSelect = (
   let retries = 0
   const MAX_RETRIES = 2
 
-  const send = (frame) => client.send(frame).catch((e) => notify(`전송 실패: ${e.message}`))
+  const send = (frame) => client.send(frame).catch((e) => notify(`전송 실패: ${errorText(e)}`))
 
   function refresh() {
     if (!client.connected) return

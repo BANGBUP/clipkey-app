@@ -18,7 +18,7 @@ import { setupTarget } from './target.js'
 import { setupPhrases } from './phrases.js'
 import { setupDebug } from './debug.js'
 import { setupFirmwareUi } from './fwui.js'
-import { appLog, describeError } from './log.js'
+import { appLog, describeError, errorText } from './log.js'
 import { APP_VERSION } from './version.js'
 
 import { createReconnector } from './reconnect.js'
@@ -141,6 +141,7 @@ function renderLeds(status) {
 
 function renderStatus(status) {
   sendStats?.update() // the target PC (Apple or not) changes the estimate
+  if (status) firmwareUi?.onStatus()
   const connected = Boolean(status)
   setChip('link', connected ? `${deviceLabel()} 연결됨` : '기기 미연결', connected ? 'on' : 'bad')
   $('connectBtn').textContent = connected ? '연결됨' : '연결'
@@ -312,7 +313,7 @@ async function sendText(text, { record = true } = {}) {
     return completed
   } catch (error) {
     log(`send failed: ${describeError(error)}`)
-    notify(`전송 실패: ${error.message}`)
+    notify(`전송 실패: ${errorText(error)}`)
     return false
   }
 }

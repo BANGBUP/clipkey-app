@@ -4,6 +4,10 @@
 const pad = (n, w = 2) => String(n).padStart(w, '0')
 const stamp = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`
 
+/** For the user: some iOS Web BLE browsers reject with a bare number instead of an Error. */
+export const errorText = (error) =>
+  error && typeof error === 'object' && error.message ? error.message : `오류 코드 ${error}`
+
 export const describeError = (error) =>
   error && typeof error === 'object' ? `${error.name ?? 'Error'}: ${error.message ?? ''}` : String(error)
 
