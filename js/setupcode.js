@@ -3,6 +3,7 @@
 
 import { USE_BOOT_WINDOW } from './ble.js'
 import { encodeSetSetupCode } from './protocol.js'
+import { askText } from './modal.js'
 
 /** @param {{ client, notify: (msg: string) => void }} deps */
 export function setupSetupCode({ client, notify }) {
@@ -39,10 +40,12 @@ export function setupSetupCode({ client, notify }) {
 
   /** After registering with BOOT on a ClipKey without a code: setting one is optional. */
   async function offer() {
-    const code = prompt(
+    const code = await askText(
       '이 ClipKey에는 설정 코드가 없습니다(선택 사항).\n' +
         '코드를 정하면 다른 폰을 BOOT 버튼 없이 그 코드로 등록할 수 있습니다.\n' +
-        '정하려면 숫자 4~12자리를 입력하세요 (0000 제외). 건너뛰려면 취소:',
+        '정하려면 숫자 4~12자리를 입력하세요 (0000 제외).',
+      '',
+      { okText: '저장', cancelText: '건너뛰기' },
     )
     if (code === null || code.trim() === '') return
     await save(code.trim(), '설정 코드를 저장했습니다. 다른 폰은 이 코드로도 등록할 수 있습니다')

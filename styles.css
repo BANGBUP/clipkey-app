@@ -260,3 +260,6 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 .rx-item .row { flex-wrap: wrap; }
 
 .app-version { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+/* modal.js: in-app confirm / prompt (keeps the message's line breaks) */
+.modal-message { white-space: pre-line; }

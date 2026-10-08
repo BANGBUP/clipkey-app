@@ -13,6 +13,7 @@ import {
   OTA_CHUNK,
 } from './firmware.js'
 import { createOtaStream, StreamUnsupportedError } from './otastream.js'
+import { askConfirm } from './modal.js'
 import { appLog, describeError } from './log.js'
 
 const MANIFEST_URL = 'firmware/manifest.json'
@@ -200,7 +201,11 @@ export function setupFirmwareUi({ client, notify }) {
     if (running) return
     try {
       const pkg = parseCkfw(await getBytes())
-      if (!confirm(`펌웨어 ${device.version ?? '(현재 버전 알 수 없음)'} → ${pkg.version} 으로 업데이트할까요?\n약 1~3분 걸립니다(휴대폰에 따라 다름). 그동안 앱을 닫거나 화면을 끄지 마세요.`)) return
+      const ok = await askConfirm(
+        `펌웨어 ${device.version ?? '(현재 버전 알 수 없음)'} → ${pkg.version} 으로 업데이트할까요?\n약 1~3분 걸립니다(휴대폰에 따라 다름). 그동안 앱을 닫거나 화면을 끄지 마세요.`,
+        { okText: '업데이트' },
+      )
+      if (!ok) return
       await upload(pkg)
     } catch (error) {
       notify(`펌웨어 업데이트 실패: ${error.message ?? error}`)

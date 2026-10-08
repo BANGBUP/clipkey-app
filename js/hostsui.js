@@ -2,6 +2,7 @@
 
 import { SECURE_MSG, HOST_PROFILE_LABEL } from './constants.js'
 import { errorText } from './log.js'
+import { askConfirm, askText } from './modal.js'
 import {
   encodeListHosts,
   encodeDeleteHost,
@@ -51,8 +52,8 @@ export function setupHostsUi({ client, notify, onChange = () => {}, onSelect = (
     return el('button', {
       className: 'btn small',
       textContent: '별명',
-      onclick: () => {
-        const value = prompt('이 PC·태블릿의 별명 (예: 회사 노트북, 비우면 지움)', host.alias)
+      onclick: async () => {
+        const value = await askText('이 PC·태블릿의 별명 (예: 회사 노트북, 비우면 지움)', host.alias, { okText: '저장' })
         if (value === null) return
         let frame
         try {
@@ -70,9 +71,13 @@ export function setupHostsUi({ client, notify, onChange = () => {}, onSelect = (
     return el('button', {
       className: 'btn danger small',
       textContent: '삭제',
-      onclick: () => {
+      onclick: async () => {
         const warn = host.connected ? '\n지금 연결되어 있다면 바로 끊깁니다.' : ''
-        if (!confirm(`"${title}" 페어링을 삭제할까요?${warn}\n다시 쓰려면 PC의 블루투스 설정에서도 ClipKey를 "디바이스 제거"한 뒤, "PC 블루투스 연결 추가"로 새로 페어링하세요.`)) return
+        const ok = await askConfirm(
+          `"${title}" 페어링을 삭제할까요?${warn}\n다시 쓰려면 PC의 블루투스 설정에서도 ClipKey를 "디바이스 제거"한 뒤, "PC 블루투스 연결 추가"로 새로 페어링하세요.`,
+          { okText: '삭제' },
+        )
+        if (!ok) return
         send(encodeDeleteHost(host.addr)).then(() => {
           notify(`${title} 삭제됨. PC의 블루투스 설정에서도 ClipKey를 제거해야 다시 페어링할 수 있습니다`)
           refresh()

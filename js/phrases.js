@@ -1,6 +1,7 @@
 // Send tab extras: saved phrases ("자주 쓰는 문구", tap to type) and the recent-text history.
 // Both live only on this phone (localStorage).
 
+import { askConfirm } from './modal.js'
 import {
   addToHistory,
   removeFromHistory,
@@ -87,8 +88,14 @@ export function setupPhrases({ sendText, fillInput, notify }) {
       try {
         if (action === 'save') {
           snippets = upsertSnippet(snippets, { id: existing?.id, title: $('snippetTitle').value, text: $('snippetText').value })
-        } else if (action === 'delete' && existing && confirm(`"${existing.title}" 문구를 삭제할까요?`)) {
-          snippets = removeSnippet(snippets, existing.id)
+        } else if (action === 'delete' && existing) {
+          askConfirm(`"${existing.title}" 문구를 삭제할까요?`, { okText: '삭제' }).then((ok) => {
+            if (!ok) return
+            snippets = removeSnippet(snippets, existing.id)
+            persist(snippetStore, snippets)
+            renderSnippets()
+          })
+          return
         } else if (action === 'up' && existing) {
           snippets = moveSnippet(snippets, existing.id, -1)
         } else {
@@ -149,14 +156,17 @@ export function setupPhrases({ sendText, fillInput, notify }) {
     historyOn = e.target.checked
     persist(historyFlag, historyOn)
     notify(historyOn ? `보낸 텍스트를 최근 ${HISTORY_LIMIT}개까지 기록합니다` : '이제부터 기록하지 않습니다')
-    if (!historyOn && history.some((h) => !h.pinned) && confirm('지금까지의 기록도 지울까요? (고정한 항목은 남습니다)')) {
-      history = clearUnpinned(history)
-      persist(historyStore, history)
-      renderHistory()
+    if (!historyOn && history.some((h) => !h.pinned)) {
+      askConfirm('지금까지의 기록도 지울까요? (고정한 항목은 남습니다)', { okText: '지우기', cancelText: '남겨 두기' }).then((ok) => {
+        if (!ok) return
+        history = clearUnpinned(history)
+        persist(historyStore, history)
+        renderHistory()
+      })
     }
   })
-  $('historyClearBtn').addEventListener('click', () => {
-    if (!confirm('기록을 지울까요? (고정한 항목은 남습니다)')) return
+  $('historyClearBtn').addEventListener('click', async () => {
+    if (!(await askConfirm('기록을 지울까요? (고정한 항목은 남습니다)', { okText: '지우기' }))) return
     history = clearUnpinned(history)
     persist(historyStore, history)
     renderHistory()
