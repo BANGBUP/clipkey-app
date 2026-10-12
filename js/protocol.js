@@ -17,6 +17,27 @@ export function opToItem(op) {
   }
 }
 
+/**
+ * KEYS frames that never split a character across two frames, so "everything up to frame
+ * n arrived" always ends on a whole character. Each frame says how many characters it
+ * completes (`charEnd`) and how many items it carries.
+ * @param {Array<Array<object>>} groups ops of each character (see textToCharOps)
+ */
+export function encodeCharFrames(groups, maxItems = MAX_ITEMS_PER_FRAME) {
+  const frames = []
+  let ops = []
+  const flush = (charEnd) => {
+    if (ops.length > 0) frames.push({ frame: Uint8Array.from([FRAME.KEYS, ...ops.flatMap(opToItem)]), items: ops.length, charEnd })
+    ops = []
+  }
+  groups.forEach((group, i) => {
+    if (ops.length + group.length > maxItems) flush(i)
+    ops = [...ops, ...group]
+  })
+  flush(groups.length)
+  return frames
+}
+
 /** Splits ops into KEYS frames of at most MAX_ITEMS_PER_FRAME items. */
 export function encodeKeyFrames(ops, maxItems = MAX_ITEMS_PER_FRAME) {
   const frames = []

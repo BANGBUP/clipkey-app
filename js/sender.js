@@ -1,7 +1,7 @@
 // Turns text (or single keys) into KEYS frames and streams them through the client.
 
-import { textToOps } from './keymap.js'
-import { encodeKeyFrames, encodeCancel } from './protocol.js'
+import { textToCharOps } from './keymap.js'
+import { encodeKeyFrames, encodeCharFrames, encodeCancel } from './protocol.js'
 import { hasAttError } from './ble.js'
 import { ATT_ERROR } from './constants.js'
 
@@ -16,15 +16,20 @@ export function createSender(client, onProgress) {
   let stopReason = null // 'user' | 'device', for the job that ends because of it
   let chain = Promise.resolve()
 
-  /** @returns {Promise<boolean>} true when every op was handed to the device */
-  async function streamOps(ops, jobGeneration) {
+  const plainFrames = (ops) => encodeKeyFrames(ops).map((frame) => ({ frame, items: (frame.length - 1) / 2, charEnd: 0 }))
+
+  /**
+   * @param {Array<{ frame: Uint8Array, items: number, charEnd: number }>} frames
+   * @param {{ charsDone: number }} done updated as frames are acknowledged
+   * @returns {Promise<boolean>} true when every frame was handed to the device
+   */
+  async function streamFrames(frames, jobGeneration, done) {
     const isCancelled = () => jobGeneration !== generation
-    const frames = encodeKeyFrames(ops)
-    const total = ops.length
+    const total = frames.reduce((n, f) => n + f.items, 0)
     let sent = 0
     onProgress({ sent, total, active: true })
     try {
-      for (const frame of frames) {
+      for (const { frame, items, charEnd } of frames) {
         if (isCancelled()) return false
         try {
           await client.sendKeys(frame, isCancelled)
@@ -34,7 +39,8 @@ export function createSender(client, onProgress) {
           return false
         }
         if (isCancelled()) return false
-        sent += (frame.length - 1) / 2
+        sent += items
+        done.charsDone = charEnd
         onProgress({ sent, total, active: true })
       }
       return true
@@ -44,15 +50,23 @@ export function createSender(client, onProgress) {
   }
 
   // Jobs run strictly in order so texts and keys never interleave.
-  function enqueue(ops, skipped) {
+  // `chars` (texts only) lets a failed job say what never reached the device: `remaining`.
+  function enqueue(frames, skipped, chars = null) {
     const jobGeneration = generation
+    const items = frames.reduce((n, f) => n + f.items, 0)
     const run = chain.then(async () => {
       if (jobGeneration !== generation) return { skipped, items: 0, completed: false, stopReason }
       active = true
       stopReason = null
+      const done = { charsDone: 0 }
       try {
-        const completed = ops.length === 0 || (await streamOps(ops, jobGeneration))
-        return { skipped, items: ops.length, completed, stopReason: completed ? null : stopReason }
+        const completed = frames.length === 0 || (await streamFrames(frames, jobGeneration, done))
+        return { skipped, items, completed, stopReason: completed ? null : stopReason }
+      } catch (error) {
+        // Lost link, call, screen off ...: keys already handed over are typed by the device
+        // anyway, so the rest starts right after the last acknowledged frame.
+        if (chars) error.remaining = chars.slice(done.charsDone).join('')
+        throw error
       } finally {
         active = false
       }
@@ -61,14 +75,17 @@ export function createSender(client, onProgress) {
     return run
   }
 
-  /** @returns {Promise<{ skipped: number, items: number, completed: boolean }>} */
+  /**
+   * @returns {Promise<{ skipped: number, items: number, completed: boolean }>}
+   *   rejects with `error.remaining`: the text the device never got
+   */
   function sendText(text) {
-    const { ops, skipped } = textToOps(text)
-    return enqueue(ops, skipped)
+    const { chars, groups, skipped } = textToCharOps(text)
+    return enqueue(encodeCharFrames(groups), skipped, chars)
   }
 
   function sendOps(ops) {
-    return enqueue(ops, 0)
+    return enqueue(plainFrames(ops), 0)
   }
 
   /** Sends one non-KEYS frame (e.g. 한/영) after everything queued before it. */

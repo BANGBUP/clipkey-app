@@ -71,26 +71,37 @@ function classify(ch) {
 }
 
 /**
+ * The ops of every character on its own (empty for a skipped one), so a text cut off
+ * part-way can be sent again from the first character the device never got.
+ * @param {string} text
+ * @returns {{ chars: string[], groups: Array<Array<object>>, skipped: number }}
+ */
+export function textToCharOps(text) {
+  const chars = [...normalizeText(text)]
+  const groups = []
+  let mode = null
+  let skipped = 0
+  for (const ch of chars) {
+    const c = classify(ch)
+    if (!c) {
+      skipped += 1
+      groups.push([])
+      continue
+    }
+    const needsMode = c.mode !== null && c.mode !== mode
+    groups.push(needsMode ? [{ type: OP.MODE, hangul: c.mode }, ...c.ops] : c.ops)
+    mode = c.mode ?? mode
+  }
+  return { chars, groups, skipped }
+}
+
+/**
  * @param {string} text
  * @returns {{ ops: Array<object>, skipped: number }}
  */
 export function textToOps(text) {
-  const normalized = normalizeText(text)
-  const result = [...normalized].reduce(
-    (acc, ch) => {
-      const c = classify(ch)
-      if (!c) return { ...acc, skipped: acc.skipped + 1 }
-      const needsMode = c.mode !== null && c.mode !== acc.mode
-      const modeOps = needsMode ? [{ type: OP.MODE, hangul: c.mode }] : []
-      return {
-        ops: [...acc.ops, ...modeOps, ...c.ops],
-        mode: c.mode ?? acc.mode,
-        skipped: acc.skipped,
-      }
-    },
-    { ops: [], mode: null, skipped: 0 },
-  )
-  return { ops: result.ops, skipped: result.skipped }
+  const { groups, skipped } = textToCharOps(text)
+  return { ops: groups.flat(), skipped }
 }
 
 /**

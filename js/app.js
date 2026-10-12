@@ -8,6 +8,7 @@ import { setupSetupCode } from './setupcode.js'
 import { setupPcReceive } from './pcrxui.js'
 import { setupSendStats } from './sendstats.js'
 import { setupTypingBar } from './typingbar.js'
+import { createWakeLock } from './wakelock.js'
 import { createEventFilter, formatDeviceEvent } from './devevents.js'
 
 const isNewEvent = createEventFilter() // device events repeat after every sign-in
@@ -241,6 +242,7 @@ const reconnector = createReconnector({
 })
 
 let typingBar = null
+const screenLock = createWakeLock() // the page freezes with the screen off: keep it on while typing
 const sender = createSender(client, (progress) => typingBar?.onSending(progress))
 
 async function pushSettings() {
@@ -290,8 +292,11 @@ function isAppleHost() {
   return profile === HOST_PROFILE.APPLE || (profile === HOST_PROFILE.AUTO && settings.toggleKey === 'ctrlspace')
 }
 
+// "이어 보내기" sends what is left without recording it as a phrase (only part of a text).
+const resumeText = (rest) => sendText(rest, { record: false, resumed: true })
+
 /** Types `text` on the PC. Resolves true when every key was sent. */
-async function sendText(text, { record = true } = {}) {
+async function sendText(text, { record = true, resumed = false } = {}) {
   if (!client.connected) {
     notify('먼저 기기에 연결하세요')
     return false
@@ -308,10 +313,22 @@ async function sendText(text, { record = true } = {}) {
     else if (skipped > 0) notify(`완료 · 건너뛴 문자 ${skipped}개: ${unsupportedChars(text).join(' ')}`)
     else notify('타이핑 완료')
     if (completed && record) phrases?.record(text)
+    // A resumed text that finished, or was stopped on purpose (part of it is typed already:
+    // offering it again would type that part twice), leaves nothing to resume.
+    if (resumed) typingBar?.setRemaining('')
     return completed
   } catch (error) {
     log(`send failed: ${describeError(error)}`)
-    notify(`전송 실패: ${errorText(error)}`)
+    const rest = error?.remaining ?? ''
+    if (rest) {
+      // Never logged: it may be a password. Only the length goes to the log.
+      log(`send cut off: ${[...rest].length} chars not sent`)
+      typingBar?.setRemaining(rest)
+      notify(`전송이 끊겼습니다 (${errorText(error)}). 다시 연결한 뒤 아래 '이어 보내기'를 누르세요`)
+    } else {
+      if (resumed) typingBar?.setRemaining('') // nothing was left after all
+      notify(`전송 실패: ${errorText(error)}`)
+    }
     return false
   }
 }
@@ -364,6 +381,10 @@ function wireSend() {
     text: $('progressText'),
     button: $('cancelBtn'),
     onStop: () => sender.cancel().catch((e) => notify(errorText(e))),
+    resumeButton: $('resumeBtn'),
+    dropButton: $('dropResumeBtn'),
+    onResume: resumeText,
+    onTyping: (typing) => screenLock.set(typing),
   })
 }
 

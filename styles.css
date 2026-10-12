@@ -116,7 +116,8 @@ textarea:disabled { opacity: 0.5; }
 }
 .typing-bar progress { flex: 1; height: 10px; min-width: 0; }
 .typing-bar span { font-size: 14px; white-space: nowrap; }
-.typing-bar .btn { margin-left: auto; font-weight: 600; }
+.typing-bar .btn { font-weight: 600; }
+.typing-bar span { margin-right: auto; }
 body.typing main { padding-bottom: 72px; }
 
 /* On-screen extended keyboard */
