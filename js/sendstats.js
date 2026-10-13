@@ -1,6 +1,7 @@
 // Under the send box: how many characters, and roughly how long typing them will take.
 
 import { countKeys } from './keymap.js'
+import { pacingExtraMs } from './pacing.js'
 
 const OVERHEAD = 1.1 // Bluetooth / USB latency on top of the firmware's own waits
 
@@ -9,12 +10,13 @@ const OVERHEAD = 1.1 // Bluetooth / USB latency on top of the firmware's own wai
  * press + release, a 한/영 switch is one tap (Ctrl+Space on Apple: 4 reports) plus the
  * settle wait, and a jamo commit is at most two switches.
  * @param {{ taps: number, modeSwitches: number, commits: number }} count
- * @param {{ delayMs: number, settleMs: number, apple: boolean }} timing
+ * @param {{ delayMs: number, settleMs: number, apple: boolean, pacing?: object }} timing
  */
-export function estimateTypingMs({ taps, modeSwitches, commits }, { delayMs, settleMs, apple }) {
+export function estimateTypingMs({ chars = 0, taps, modeSwitches, commits }, { delayMs, settleMs, apple, pacing }) {
   const tap = 2 * delayMs
   const toggle = (apple ? 4 : 2) * delayMs + settleMs
-  return Math.round((taps * tap + modeSwitches * toggle + commits * 2 * toggle) * OVERHEAD)
+  const paced = pacing ? pacingExtraMs({ chars, taps }, pacing) : 0
+  return Math.round((taps * tap + modeSwitches * toggle + commits * 2 * toggle + paced) * OVERHEAD)
 }
 
 /** "3초", "1분 20초", "1시간 5분" (rounded up so the estimate is not optimistic). */

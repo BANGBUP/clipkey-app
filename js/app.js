@@ -9,6 +9,7 @@ import { setupPcReceive } from './pcrxui.js'
 import { setupSendStats } from './sendstats.js'
 import { setupTypingBar } from './typingbar.js'
 import { createWakeLock } from './wakelock.js'
+import { loadSettings, saveSettings, validateSettings, settingsFrames, pacingOf, wireTypingSettings } from './typingsettings.js'
 import { createEventFilter, formatDeviceEvent } from './devevents.js'
 
 const isNewEvent = createEventFilter() // device events repeat after every sign-in
@@ -26,7 +27,6 @@ import { APP_VERSION } from './version.js'
 import { createReconnector } from './reconnect.js'
 import { tokenStore } from './auth.js'
 import {
-  TOGGLE_KEYS,
   KEEP_AWAKE_KEYS,
   DEFAULT_KEEP_AWAKE_KEY,
   HOST_PROFILE,
@@ -35,9 +35,6 @@ import {
 } from './constants.js'
 import {
   encodeSetIme,
-  encodeSetToggleKey,
-  encodeSetDelay,
-  encodeSetImeSettle,
   encodeSetKeepAwake,
   keepAwakeKeyId,
 } from './protocol.js'
@@ -46,47 +43,6 @@ const log = (m) => appLog.add(`[app] ${m}`)
 log(`start: app ${APP_VERSION} ${navigator.onLine ? 'online' : 'offline'} | ${navigator.userAgent}`)
 
 const $ = (id) => document.getElementById(id)
-const SETTINGS_KEY = 'clipkey.settings.v1'
-const DEFAULT_SETTINGS = Object.freeze({ toggleKey: 'lang1', delay: 15, appleDelay: 20, settle: 30 })
-
-function loadSettings() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}')
-    const toggleKey = raw.toggleKey in TOGGLE_KEYS ? raw.toggleKey : DEFAULT_SETTINGS.toggleKey
-    const inRange = (v, min, max) => Number.isInteger(v) && v >= min && v <= max
-    const delay = inRange(raw.delay, 2, 40) ? raw.delay : DEFAULT_SETTINGS.delay
-    const appleDelay = inRange(raw.appleDelay, 2, 40) ? raw.appleDelay : DEFAULT_SETTINGS.appleDelay
-    const settle = inRange(raw.settle, 0, 500) ? raw.settle : DEFAULT_SETTINGS.settle
-    return { toggleKey, delay, appleDelay, settle }
-  } catch {
-    return { ...DEFAULT_SETTINGS }
-  }
-}
-
-function saveSettings(settings) {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
-  } catch {
-    // storage unavailable: settings last for this session only
-  }
-}
-
-let toastTimer = null
-function notify(message) {
-  log(`notify: ${message}`)
-  const el = $('toast')
-  el.textContent = message
-  el.classList.remove('hidden')
-  clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => el.classList.add('hidden'), 4000)
-}
-
-function setChip(name, text, state) {
-  const chip = document.querySelector(`[data-chip="${name}"]`)
-  chip.textContent = text
-  chip.className = `chip ${state ?? ''}`
-}
-
 let settings = loadSettings()
 let keyboard = null
 let setupCode = null
@@ -246,9 +202,9 @@ const screenLock = createWakeLock() // the page freezes with the screen off: kee
 const sender = createSender(client, (progress) => typingBar?.onSending(progress))
 
 async function pushSettings() {
-  await client.send(encodeSetToggleKey(TOGGLE_KEYS[settings.toggleKey]))
-  await client.send(encodeSetDelay(settings.delay, settings.appleDelay))
-  await client.send(encodeSetImeSettle(settings.settle))
+  for (const frame of settingsFrames(settings, { pacing: Boolean(client.status?.pacing) })) {
+    await client.send(frame)
+  }
   hostsUi?.refresh()
 }
 
@@ -307,7 +263,7 @@ async function sendText(text, { record = true, resumed = false } = {}) {
   }
   try {
     log(`send ${[...text].length} chars`)
-    const { skipped, completed, stopReason } = await sender.sendText(text)
+    const { skipped, completed, stopReason } = await sender.sendText(text, pacingOf(settings))
     log(`send done completed=${completed} skipped=${skipped}`)
     if (!completed) notify(stopReason === 'device' ? '기기의 BOOT 버튼으로 타이핑을 멈췄습니다' : '타이핑을 멈췄습니다')
     else if (skipped > 0) notify(`완료 · 건너뛴 문자 ${skipped}개: ${unsupportedChars(text).join(' ')}`)
@@ -364,7 +320,12 @@ function wireSend() {
     out: $('sendStats'),
     getTiming: () => {
       const apple = isAppleHost()
-      return { delayMs: apple ? settings.appleDelay : settings.delay, settleMs: settings.settle, apple }
+      return {
+        delayMs: apple ? settings.appleDelay : settings.delay,
+        settleMs: apple ? settings.appleSettle : settings.settle,
+        apple,
+        pacing: pacingOf(settings),
+      }
     },
   })
   $('sendBtn').addEventListener('click', () => sendText($('sendText').value))
@@ -435,29 +396,17 @@ function wireKeepAwake() {
 }
 
 function wireSettings() {
-  const select = $('toggleKey')
-  Object.entries(TOGGLE_KEYS).forEach(([value, { label }]) => select.add(new Option(label, value)))
-  select.value = settings.toggleKey
-  $('delay').value = settings.delay
-  $('delayOut').textContent = settings.delay
-
-  const apply = (patch) => {
-    settings = { ...settings, ...patch }
-    saveSettings(settings)
-    sendStats?.update()
-    if (client.connected) pushSettings().catch((e) => notify(e.message))
-  }
-  select.addEventListener('change', () => apply({ toggleKey: select.value }))
-  $('delay').addEventListener('input', (e) => ($('delayOut').textContent = e.target.value))
-  $('delay').addEventListener('change', (e) => apply({ delay: Number(e.target.value) }))
-  $('appleDelay').value = settings.appleDelay
-  $('appleDelayOut').textContent = settings.appleDelay
-  $('appleDelay').addEventListener('input', (e) => ($('appleDelayOut').textContent = e.target.value))
-  $('appleDelay').addEventListener('change', (e) => apply({ appleDelay: Number(e.target.value) }))
-  $('settle').value = settings.settle
-  $('settleOut').textContent = settings.settle
-  $('settle').addEventListener('input', (e) => ($('settleOut').textContent = e.target.value))
-  $('settle').addEventListener('change', (e) => apply({ settle: Number(e.target.value) }))
+  wireTypingSettings({
+    $,
+    get: () => settings,
+    apply: (patch) => {
+      settings = validateSettings({ ...settings, ...patch })
+      saveSettings(settings)
+      sendStats?.update()
+      if (client.connected) pushSettings().catch((e) => notify(e.message))
+      return settings
+    },
+  })
 
   const flipImeBelief = () => {
     const status = client.status

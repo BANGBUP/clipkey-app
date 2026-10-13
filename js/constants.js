@@ -27,6 +27,8 @@ export const OP = Object.freeze({
   TAP: 'tap', // press + release one key with modifiers
   MODE: 'mode', // ensure PC IME is in hangul (true) / english (false) mode
   COMMIT: 'commit', // finish any in-progress hangul composition
+  PAUSE: 'pause', // { ms } rest so a slow PC app catches up (긴 글 숨 고르기)
+  PACE: 'pace', // { ms } extra per key from here until the device runs out of keys
 })
 
 // Wire encoding: every queue item is 2 bytes [a, b].
@@ -36,6 +38,8 @@ export const OP = Object.freeze({
 export const ITEM = Object.freeze({
   MODE: 0xf0,
   COMMIT: 0xf1,
+  PAUSE: 0xf3, // b = pause x10 ms
+  PACE: 0xf4, // b = extra ms per key
 })
 
 export const FRAME = Object.freeze({
@@ -158,6 +162,7 @@ export const CAPS = Object.freeze({
   USB_OTG: 1 << 0, // ESP32-S3: wired keyboard / USB host modes exist (original ESP32: Bluetooth only)
   NO_SETUP_CODE: 1 << 1, // no setup code stored: phones register only via the BOOT window
   TYPING_STOPPED: 1 << 3, // BOOT pressed while typing: the app must stop sending too
+  PACING: 1 << 4, // PAUSE / PACE items and a separate iPad·Mac 한/영 wait are understood
   REG_WINDOW: 1 << 2, // BOOT was pressed: one phone may register with REGISTER_DEFAULT_CODE (60 s)
 })
 

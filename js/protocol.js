@@ -12,6 +12,10 @@ export function opToItem(op) {
       return [ITEM.MODE, op.hangul ? 1 : 0]
     case OP.COMMIT:
       return [ITEM.COMMIT, 0]
+    case OP.PAUSE:
+      return [ITEM.PAUSE, Math.max(0, Math.min(255, Math.round(op.ms / 10)))]
+    case OP.PACE:
+      return [ITEM.PACE, Math.max(0, Math.min(100, Math.round(op.ms)))]
     default:
       throw new Error(`알 수 없는 op: ${JSON.stringify(op)}`)
   }
@@ -91,9 +95,13 @@ export function encodePcPairReply({ accept, passkey = 0 }) {
 
 export const formatPasskey = (n) => String(n).padStart(6, '0')
 
-export function encodeSetImeSettle(ms) {
-  const v = Math.max(0, Math.min(1000, Math.round(ms)))
-  return Uint8Array.of(FRAME.SET_IME_SETTLE, v & 0xff, v >> 8)
+/** Wait after a 한/영 switch; with `appleMs` the iPad / Mac value too (CAPS.PACING firmware). */
+export function encodeSetImeSettle(ms, appleMs) {
+  const clamp = (v) => Math.max(0, Math.min(1000, Math.round(v)))
+  const v = clamp(ms)
+  if (appleMs === undefined) return Uint8Array.of(FRAME.SET_IME_SETTLE, v & 0xff, v >> 8)
+  const a = clamp(appleMs)
+  return Uint8Array.of(FRAME.SET_IME_SETTLE, v & 0xff, v >> 8, a & 0xff, a >> 8)
 }
 
 /** New phone setup code (4-12 digits) for this ClipKey. */
@@ -157,6 +165,7 @@ export function parseStatus(view) {
     noSetupCode: view.byteLength >= 15 && (view.getUint8(14) & CAPS.NO_SETUP_CODE) !== 0,
     regWindow: view.byteLength >= 15 && (view.getUint8(14) & CAPS.REG_WINDOW) !== 0,
     typingStopped: view.byteLength >= 15 && (view.getUint8(14) & CAPS.TYPING_STOPPED) !== 0,
+    pacing: view.byteLength >= 15 && (view.getUint8(14) & CAPS.PACING) !== 0,
     // Firmware with the 19-byte status registers phones with the BOOT button; older firmware
     // used a first-phone-only default code instead.
     bootRegistration: view.byteLength >= 19,

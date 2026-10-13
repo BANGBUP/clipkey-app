@@ -1,6 +1,7 @@
 // Turns text (or single keys) into KEYS frames and streams them through the client.
 
 import { textToCharOps } from './keymap.js'
+import { addPacing } from './pacing.js'
 import { encodeKeyFrames, encodeCharFrames, encodeCancel } from './protocol.js'
 import { hasAttError } from './ble.js'
 import { ATT_ERROR } from './constants.js'
@@ -76,12 +77,14 @@ export function createSender(client, onProgress) {
   }
 
   /**
+   * @param {{ every: number, pauseMs: number, stepMs: number }} [pacing] 긴 글 숨 고르기
    * @returns {Promise<{ skipped: number, items: number, completed: boolean }>}
    *   rejects with `error.remaining`: the text the device never got
    */
-  function sendText(text) {
+  function sendText(text, pacing) {
     const { chars, groups, skipped } = textToCharOps(text)
-    return enqueue(encodeCharFrames(groups), skipped, chars)
+    const paced = pacing ? addPacing(groups, pacing) : groups
+    return enqueue(encodeCharFrames(paced), skipped, chars)
   }
 
   function sendOps(ops) {

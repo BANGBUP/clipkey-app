@@ -107,6 +107,13 @@ textarea:disabled { opacity: 0.5; }
 .progress progress { flex: 1; height: 10px; }
 .hidden { display: none !important; }
 
+/* typingsettings.js: Windows / iPad·Mac columns */
+.timing-grid { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 10px; align-items: center; }
+.timing-grid .col-head { font-size: 13px; font-weight: 600; text-align: center; }
+.timing-grid .row-head { font-size: 13px; color: var(--muted); }
+.timing-grid label { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 13px; min-width: 0; }
+.timing-grid input[type="range"] { width: 100%; }
+
 /* typingbar.js: stop button on every tab while text is being typed */
 .typing-bar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;

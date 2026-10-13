@@ -122,17 +122,26 @@
         </label>
         <p class="hint">PC에 이 시간 동안 키 입력이 없으면 기기가 선택한 키를 누릅니다. F13~F24는 거의 모든 프로그램이 무시하는 키이고, 일부 보안 프로그램이 F키를 입력으로 치지 않으면 Shift를 고르세요. 화면보호기 대기 시간보다 짧게 정하세요. 설정은 기기에 저장되어 폰 앱을 닫아도, 기기를 껐다 켜도 계속 동작합니다.</p>
       </div>
-      <label class="field">키 입력 간격 (Windows 등): <output id="delayOut">15</output> ms
-        <input type="range" id="delay" min="2" max="40" step="1" value="15">
-      </label>
-      <label class="field">키 입력 간격 (iPad / Mac): <output id="appleDelayOut">20</output> ms
-        <input type="range" id="appleDelay" min="2" max="40" step="1" value="20">
-        <span class="hint">작을수록 빠릅니다. 글자가 빠지거나 한글이 풀어지면 늘리세요(아이패드는 15ms에서 깨지고 20ms에서 정상이었음).</span>
-      </label>
-      <label class="field">한/영 전환 후 대기: <output id="settleOut">30</output> ms
-        <input type="range" id="settle" min="0" max="500" step="10" value="30">
-        <span class="hint">전환 직후 글자가 반대 언어로 찍히면(예: Cㅣaude) 늘리세요.</span>
-      </label>
+      <div class="field">
+        <strong>입력 속도</strong>
+        <div class="timing-grid">
+          <span></span><span class="col-head">Windows 등</span><span class="col-head">iPad / Mac</span>
+          <span class="row-head">키 입력 간격</span>
+          <label><output id="delayOut">15</output> ms<input type="range" id="delay" min="2" max="40" step="1" value="15" aria-label="키 입력 간격 (Windows 등)"></label>
+          <label><output id="appleDelayOut">20</output> ms<input type="range" id="appleDelay" min="2" max="40" step="1" value="20" aria-label="키 입력 간격 (iPad / Mac)"></label>
+          <span class="row-head">한/영 전환 후 대기</span>
+          <label><output id="settleOut">30</output> ms<input type="range" id="settle" min="0" max="500" step="10" value="30" aria-label="한/영 전환 후 대기 (Windows 등)"></label>
+          <label><output id="appleSettleOut">30</output> ms<input type="range" id="appleSettle" min="0" max="500" step="10" value="30" aria-label="한/영 전환 후 대기 (iPad / Mac)"></label>
+        </div>
+        <p class="hint">키 입력 간격은 작을수록 빠릅니다. 글자가 빠지거나 한글이 풀어지면 늘리세요(아이패드는 15ms에서 깨지고 20ms에서 정상이었음). 전환 직후 글자가 반대 언어로 찍히면(예: Cㅣaude) 한/영 대기를 늘리세요. iPad / Mac 쪽 한/영 대기는 펌웨어 1.0.25부터 따로 적용됩니다.</p>
+      </div>
+      <div class="field">
+        <strong>긴 글 숨 고르기</strong>
+        <label class="row"><span class="grow">쉬는 간격</span><input type="number" id="breathEvery" min="0" max="5000" step="100" inputmode="numeric" class="num"> 자마다</label>
+        <label class="row"><span class="grow">쉬는 시간</span><input type="number" id="breathMs" min="0" max="10" step="0.5" inputmode="decimal" class="num"> 초</label>
+        <label class="row"><span class="grow">1,000자마다 키 간격 늘리기</span><input type="number" id="slowStepMs" min="0" max="10" step="1" inputmode="numeric" class="num"> ms</label>
+        <p class="hint">문서가 길어지면 메모장 같은 프로그램이 느려져 한글이 깨지거나 빠질 수 있습니다. 긴 글을 보낼 때 중간중간 쉬고, 뒤로 갈수록 조금씩 천천히 입력해 PC가 따라올 시간을 줍니다(늘어나는 간격은 최대 20ms). 0이면 끕니다. 펌웨어 1.0.25 이상에서 동작합니다.</p>
+      </div>
       <div class="field">
         <div>기기가 알고 있는 PC 입력 모드: <strong id="imeBelief">-</strong></div>
         <p class="hint">PC 실제 모드와 다르면(한글이 영문으로 쳐지는 등) 아래 버튼을 누르세요. 키는 입력되지 않고 기기의 기억만 바뀝니다.</p>
