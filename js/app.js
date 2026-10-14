@@ -43,6 +43,22 @@ const log = (m) => appLog.add(`[app] ${m}`)
 log(`start: app ${APP_VERSION} ${navigator.onLine ? 'online' : 'offline'} | ${navigator.userAgent}`)
 
 const $ = (id) => document.getElementById(id)
+let toastTimer = null
+function notify(message) {
+  log(`notify: ${message}`)
+  const el = $('toast')
+  el.textContent = message
+  el.classList.remove('hidden')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 4000)
+}
+
+function setChip(name, text, state) {
+  const chip = document.querySelector(`[data-chip="${name}"]`)
+  chip.textContent = text
+  chip.className = `chip ${state ?? ''}`
+}
+
 let settings = loadSettings()
 let keyboard = null
 let setupCode = null
