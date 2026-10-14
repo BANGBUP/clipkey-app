@@ -238,6 +238,13 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 .pc-row .target { flex: 1; min-width: 0; font-weight: 600; color: var(--ok);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-row .target select { max-width: 100%; }
+.target-buttons { display: flex; gap: 6px; min-width: 0; }
+.target-btn {
+  flex: 1 1 0; min-width: 0; font: inherit; font-size: 14px; padding: 4px 10px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.target-btn.on { border-color: var(--ok); color: var(--ok); font-weight: 700; box-shadow: inset 0 0 0 1px var(--ok); }
 .ime-btn {
   display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 14px;
   padding: 4px 6px 4px 10px; border: 1px solid var(--border); border-radius: 8px;

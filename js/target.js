@@ -1,10 +1,12 @@
-// "입력 대상": which connected PC receives keystrokes. A plain label with one PC,
-// a selector when there are several (Bluetooth PCs, plus the wired PC on ESP32-S3).
+// "입력 대상": which connected PC receives keystrokes. A plain label with one PC, one
+// button per PC for two or three (one tap switches, e.g. the wired PC and a Bluetooth PC on
+// ESP32-S3), and a selector beyond that.
 
 import { TARGET } from './constants.js'
 import { encodeSelectTarget, hostTitle } from './hosts.js'
 
 const WIRED_VALUE = 'usb'
+const MAX_BUTTONS = 3
 
 /**
  * @param {{ client, sender, notify: (msg: string) => void, getHosts: () => Array }} deps
@@ -18,7 +20,7 @@ export function setupTarget({ client, sender, notify, getHosts }) {
       .filter((h) => h.connected)
       .map((h) => ({ value: h.addr.bytes.join('.'), title: hostTitle(h), host: h, active: h.active }))
     const wired = status.usbPc
-      ? [{ value: WIRED_VALUE, title: '유선 연결 PC', host: null, active: status.targetKind === TARGET.USB }]
+      ? [{ value: WIRED_VALUE, title: '유선 PC', host: null, active: status.targetKind === TARGET.USB }]
       : []
     return [...wired, ...ble]
   }
@@ -62,6 +64,12 @@ export function setupTarget({ client, sender, notify, getHosts }) {
     // Status updates arrive often while typing: don't rebuild (and close) an open selector.
     const current = (options.find((o) => o.active) ?? options[0]).value
     const key = `${options.map((o) => `${o.value}=${o.title}`).join('|')}#${current}`
+    if (options.length <= MAX_BUTTONS) {
+      if (key === shownKey && label.querySelector('.target-buttons')) return
+      shownKey = key
+      label.replaceChildren(buttons(options, current))
+      return
+    }
     const existing = label.querySelector('select')
     if (existing && (key === shownKey || document.activeElement === existing)) return
     shownKey = key
@@ -73,6 +81,29 @@ export function setupTarget({ client, sender, notify, getHosts }) {
       select(options.find((o) => o.value === selectEl.value))
     })
     label.replaceChildren(selectEl)
+  }
+
+  function buttons(options, current) {
+    const group = Object.assign(document.createElement('div'), { className: 'target-buttons' })
+    group.setAttribute('role', 'group')
+    group.setAttribute('aria-label', '입력 대상')
+    options.forEach((o) => {
+      const on = o.value === current
+      const button = Object.assign(document.createElement('button'), {
+        type: 'button',
+        className: `target-btn${on ? ' on' : ''}`,
+        textContent: o.title,
+        title: `${o.title}에 입력`,
+      })
+      button.setAttribute('aria-pressed', String(on))
+      button.addEventListener('click', () => {
+        if (on) return
+        shownKey = '' // redraw from the next status (the device confirms the switch)
+        select(o)
+      })
+      group.append(button)
+    })
+    return group
   }
 
   return Object.freeze({
