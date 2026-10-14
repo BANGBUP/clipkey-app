@@ -26,7 +26,12 @@ export function setupTarget({ client, sender, notify, getHosts }) {
   }
 
   async function select(choice) {
-    // Also text still waiting in the ClipKey's queue (the firmware refuses too).
+    // Also text still waiting in the ClipKey's queue (the firmware refuses too). The queue
+    // count can be stale (older firmware skips the "queue empty" update after a short text):
+    // ask the device before refusing.
+    if (!sender.active && (client.status?.queueUsed ?? 0) > 0) {
+      await client.readStatus().catch(() => undefined)
+    }
     if (sender.active || (client.status?.queueUsed ?? 0) > 0) {
       notify('타이핑 중에는 입력 대상을 바꿀 수 없습니다')
       render(lastStatus)
