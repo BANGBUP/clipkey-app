@@ -1,6 +1,6 @@
 // Offline cache for the app shell. Network first so updates show up immediately.
 // scripts/build-site.sh stamps CACHE per deploy, so every release installs a new worker.
-const CACHE = 'clipkey-1.0.31-f6035af'
+const CACHE = 'clipkey-1.0.32-9a74c2c'
 const SHELL = [
   './',
   'index.html',
@@ -21,6 +21,9 @@ const SHELL = [
   'js/wakelock.js',
   'js/pacing.js',
   'js/typingsettings.js',
+  'js/report.js',
+  'js/config.js',
+  'js/factoryreset.js',
   'js/ble.js',
   'js/auth.js',
   'js/sender.js',
@@ -74,7 +77,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
   if (url.pathname.includes('/firmware/')) return // updates: network only
-  if (url.pathname.includes('/install/')) return // first-install page (PC): not part of the app
+  if (url.pathname.includes('/admin-')) return // admin page (PC): not part of the app
   const key = cacheKey(request)
   event.respondWith(
     // no-cache: revalidate with the server so one deploy's modules are never mixed with

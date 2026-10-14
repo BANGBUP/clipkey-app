@@ -172,7 +172,6 @@
           <button id="fwFileBtn" class="btn small" disabled>파일로 업데이트</button>
           <input type="file" id="fwFile" accept=".ckfw" hidden>
         </div>
-        <p class="hint">새 보드에 처음 넣을 때는 PC의 크롬·엣지에서 <a href="install/" target="_blank" rel="noopener">처음 설치 페이지</a>를 여세요(USB 연결, 최신 펌웨어).</p>
         <div id="fwProgress" class="progress hidden">
           <progress id="fwBar" max="1" value="0"></progress>
           <span id="fwText"></span>
@@ -188,11 +187,23 @@
         </div>
         <p class="hint">설정 코드가 있으면 다른 폰을 BOOT 버튼 없이 등록할 수 있습니다. 0000처럼 쉬운 코드는 피하세요.</p>
       </div>
+      <div class="field">
+        <strong>문제 보고</strong>
+        <p class="hint">잘 안 될 때 증상과 함께 보내 주세요. 전화번호·증상·앱과 기기 버전·앱 로그가 관리자에게 전송됩니다. 보낸 글의 내용은 로그에 남지 않습니다.</p>
+        <input id="reportPhone" class="text-input" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="연락받을 전화번호 (필수, 예: 010-1234-5678)">
+        <textarea id="reportSymptom" class="text-input" rows="3" maxlength="2000" placeholder="증상 (예: 메모장에서 한글이 깨져요)"></textarea>
+        <button id="reportBtn" class="btn primary">상태 보고하기</button>
+      </div>
       <label class="check"><input type="checkbox" id="debugEnabled"> 디버그 로그 표시 (화면 아래, 앱 시작부터 기록)</label>
       <div class="field">
-        <p class="hint">폰 등록에는 기기의 설정 코드가 필요합니다. 코드 없이 등록하려면 기기의 BOOT 버튼을 짧게 누른 뒤 60초 안에 등록하세요. 기기를 초기화하려면 BOOT 버튼을 5초 누르세요(등록된 폰·PC 모두 삭제).</p>
+        <p class="hint">폰 등록에는 기기의 설정 코드가 필요합니다. 코드 없이 등록하려면 기기의 BOOT 버튼을 짧게 누른 뒤 60초 안에 등록하세요.</p>
         <button id="reregisterBtn" class="btn">이 폰 다시 등록</button>
         <button id="disconnectBtn" class="btn">연결 끊기</button>
+      </div>
+      <div class="field">
+        <strong>기기 초기화</strong>
+        <p class="hint">등록된 폰과 페어링된 PC를 모두 지우고 기기를 다시 시작합니다. 별명·설정 코드·입력 속도는 남습니다. 연결이 안 될 때는 기기의 BOOT 버튼을 5초 눌러도 같습니다(펌웨어 1.0.27 이상에서 앱으로 가능).</p>
+        <button id="factoryResetBtn" class="btn danger">기기 초기화</button>
       </div>
     </section>
   </main>

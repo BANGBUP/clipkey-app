@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>ClipKey 관리자</title>
+  <link rel="icon" href="../icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    .admin main { display: flex; flex-direction: column; gap: 16px; }
+    .admin section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+    .admin h1 { margin: 0; font-size: 22px; }
+    .admin h2 { margin: 0 0 8px; font-size: 16px; }
+    .admin ol, .admin ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+    .admin .version { color: var(--muted); font-size: 14px; }
+    .admin .error { color: var(--danger); }
+    .admin form.row input { min-width: 0; }
+    esp-web-install-button { display: block; margin-top: 12px; }
+  </style>
+</head>
+<body class="admin">
+  <main>
+    <h1>ClipKey 관리자 <span class="version" id="version"></span></h1>
+
+    <!-- Unlisted page behind a password (scripts/build-site.sh copies it; the app does not link
+         here). The check runs in the browser: it keeps casual visitors out, nothing more. -->
+    <section id="lock">
+      <h2>관리자 암호</h2>
+      <form id="lockForm" class="row">
+        <input id="password" class="text-input grow" type="password" autocomplete="current-password" placeholder="암호" required>
+        <button class="btn primary">열기</button>
+      </form>
+      <p id="lockError" class="hint error" hidden>암호가 맞지 않습니다.</p>
+    </section>
+
+    <div id="content" hidden>
+      <section>
+        <h2>새 보드에 처음 설치</h2>
+        <ol>
+          <li>PC의 <b>크롬</b> 또는 <b>엣지</b>에서 엽니다(휴대폰은 안 됨).</li>
+          <li>보드를 USB로 꽂습니다. ESP32-S3 보드는 <b>UART</b>(COM) 단자에 꽂으세요.</li>
+          <li><b>설치</b>를 누르고 보드의 포트(COM…)를 고릅니다.</li>
+          <li><b>Erase device</b>(기기 지우기): 새 보드나 완전 초기화면 체크. 체크하지 않으면 펌웨어만 다시 깔리고 폰·PC 등록과 설정은 남습니다.</li>
+          <li>1분 정도면 끝나고, 보드가 블루투스 이름 <b>ClipKey-XXXX</b>로 켜집니다.</li>
+        </ol>
+        <esp-web-install-button id="installButton">
+          <button slot="activate" class="btn primary">설치</button>
+          <span slot="unsupported" class="error">이 브라우저는 USB 직렬 연결을 지원하지 않습니다. PC의 크롬 또는 엣지로 여세요.</span>
+          <span slot="not-allowed" class="error">보안 연결(https)에서만 설치할 수 있습니다.</span>
+        </esp-web-install-button>
+      </section>
+
+      <section>
+        <h2>설치한 다음</h2>
+        <ol>
+          <li>보드의 <b>BOOT</b> 버튼을 짧게 누른 뒤, 폰 앱에서 연결해 등록합니다.</li>
+          <li>별명을 정하면 이름이 <b>ClipKey-별명</b>으로 바뀝니다.</li>
+          <li>이후 새 펌웨어는 폰 앱의 <b>설정 → 펌웨어 → 최신 버전으로 업데이트</b>로 받습니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>연결이 안 될 때</h2>
+        <ul>
+          <li>포트 목록에 보드가 없으면 데이터 전송이 되는 케이블인지 확인하고 다른 단자에 꽂아 보세요.</li>
+          <li>연결에 실패하면 보드의 <b>BOOT</b>를 누른 채 <b>RESET</b>(EN)을 한 번 눌렀다 떼고 다시 설치를 누르세요.</li>
+          <li>Windows에서 포트가 안 보이면 USB 칩 드라이버(CH340/CH343, CP210x)를 설치하세요.</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+  <script type="module">
+    // PBKDF2-SHA256 of the admin password (310,000 rounds); the password itself is not here.
+    const SALT = 'fdb076fd2651dd6f74350850330adc1f'
+    const HASH = 'e1f330fe10c8924a56f10b655d4554132f3f1c4e20a45e659c26b449c062a098'
+    const ROUNDS = 310000
+    const UNLOCK_KEY = 'clipkey.admin.unlocked'
+    const INSTALLER = 'https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module'
+    const $ = (id) => document.getElementById(id)
+
+    const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
+    const fromHex = (s) => Uint8Array.from(s.match(/../g), (h) => parseInt(h, 16))
+
+    async function matches(password) {
+      const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits'])
+      const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: fromHex(SALT), iterations: ROUNDS }, key, 256)
+      return hex(bits) === HASH
+    }
+
+    function remember() {
+      try { sessionStorage.setItem(UNLOCK_KEY, HASH) } catch { /* private mode: ask again next time */ }
+    }
+    function remembered() {
+      try { return sessionStorage.getItem(UNLOCK_KEY) === HASH } catch { return false }
+    }
+
+    async function unlock() {
+      $('lock').hidden = true
+      $('content').hidden = false
+      // The installer only loads (and learns where the files are) once unlocked.
+      $('installButton').setAttribute('manifest', 'manifest.json')
+      await import(INSTALLER)
+      const manifest = await fetch('manifest.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      if (manifest?.version) $('version').textContent = `펌웨어 ${manifest.version}`
+    }
+
+    $('lockForm').addEventListener('submit', async (event) => {
+      event.preventDefault()
+      $('lockError').hidden = true
+      const ok = await matches($('password').value).catch(() => false)
+      if (!ok) {
+        $('lockError').hidden = false
+        return
+      }
+      remember()
+      unlock()
+    })
+
+    if (remembered()) unlock()
+  </script>
+</body>
+</html>

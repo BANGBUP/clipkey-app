@@ -9,6 +9,8 @@ import { setupPcReceive } from './pcrxui.js'
 import { setupSendStats } from './sendstats.js'
 import { setupTypingBar } from './typingbar.js'
 import { createWakeLock } from './wakelock.js'
+import { setupReport } from './report.js'
+import { setupFactoryReset } from './factoryreset.js'
 import { loadSettings, saveSettings, validateSettings, settingsFrames, pacingOf, wireTypingSettings } from './typingsettings.js'
 import { createEventFilter, formatDeviceEvent } from './devevents.js'
 
@@ -74,10 +76,26 @@ let suppressNextReconnect = false // a disconnect we caused on purpose (re-regis
 let lastPairAction = null
 let lastHostKey = '' // pcConnected / profile / wired: refresh the paired list when it changes
 
-// "회사 PC (ClipKey-0F22)" once the nickname is known, else just the device name.
+// "회사 PC (ClipKey-0F22)" once the nickname is known, else just the device name. Firmware
+// 1.0.26+ already calls itself "ClipKey-<nickname>": no need to say it twice.
 function deviceLabel() {
   const name = client.deviceName || '기기'
-  return nickname?.value ? `${nickname.value} (${name})` : name
+  if (!nickname?.value || name.endsWith(`-${nickname.value}`)) return name
+  return `${nickname.value} (${name})`
+}
+
+// What a 상태 보고 says about this phone and device besides the log.
+function reportContext() {
+  const status = client.status
+  return {
+    app: APP_VERSION,
+    firmware: $('fwInfo')?.textContent ?? '',
+    device: client.connected ? deviceLabel() : `${client.deviceName || '없음'} (연결 안 됨)`,
+    target: status
+      ? `pc=${status.pcConnected} usb=${status.usbPc ?? '-'} target=${status.targetKind ?? '-'} profile=${status.hostProfile ?? '-'}`
+      : '',
+    userAgent: navigator.userAgent,
+  }
 }
 
 // "입력 대상" on every tab: a label, or a selector when several PCs are connected.
@@ -473,6 +491,24 @@ function init() {
   })
   target = setupTarget({ client, sender, notify, getHosts: () => hostsUi.hosts })
   setupDebug({ notify })
+  setupReport({ $, notify, log, getLog: () => appLog.lines().join('\n'), getContext: reportContext })
+  setupFactoryReset({
+    $,
+    client,
+    notify,
+    log,
+    beforeReset: () => {
+      reconnector.stop()
+      suppressNextReconnect = true
+    },
+    afterReset: () => {
+      if (client.deviceId) tokenStore.forget(client.deviceId) // the device forgot this phone
+      client.disconnect()
+    },
+    onFailed: () => {
+      suppressNextReconnect = false
+    },
+  })
   // Offline the service worker serves the last downloaded copy, which may be older.
   $('appVersion').textContent = `v${APP_VERSION}${navigator.onLine ? '' : ' · 오프라인 저장본'}`
   firmwareUi = setupFirmwareUi({ client, notify })

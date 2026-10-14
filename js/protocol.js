@@ -54,6 +54,8 @@ export function encodeKeyFrames(ops, maxItems = MAX_ITEMS_PER_FRAME) {
 
 export const encodeSetIme = (hangul) => Uint8Array.of(FRAME.SET_IME, hangul ? 1 : 0)
 export const encodeCancel = () => Uint8Array.of(FRAME.CANCEL)
+export const FACTORY_RESET_WORD = 'RESET' // firmware CK_FACTORY_RESET_WORD
+export const encodeFactoryReset = () => Uint8Array.from([FRAME.FACTORY_RESET, ...new TextEncoder().encode(FACTORY_RESET_WORD)])
 export const encodeToggleIme = () => Uint8Array.of(FRAME.TOGGLE_IME)
 export const encodeSetToggleKey = ({ mod, key }) => Uint8Array.of(FRAME.SET_TOGGLE_KEY, mod, key)
 
