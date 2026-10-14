@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClipKey 처음 설치</title>
+  <link rel="icon" href="../icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../styles.css">
+  <!-- ESP Web Tools: flashes the board from the browser over Web Serial (desktop Chrome / Edge). -->
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+  <style>
+    .install main { display: flex; flex-direction: column; gap: 16px; }
+    .install section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+    .install h1 { margin: 0; font-size: 22px; }
+    .install h2 { margin: 0 0 8px; font-size: 16px; }
+    .install ol, .install ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+    .install .version { color: var(--muted); font-size: 14px; }
+    .install .unsupported { color: var(--danger); }
+    esp-web-install-button { display: block; margin-top: 12px; }
+  </style>
+</head>
+<body class="install">
+  <main>
+    <h1>ClipKey 처음 설치 <span class="version" id="version"></span></h1>
+
+    <section>
+      <h2>새 보드에 펌웨어 넣기</h2>
+      <ol>
+        <li>PC의 <b>크롬</b> 또는 <b>엣지</b>에서 이 페이지를 엽니다(휴대폰·아이폰은 안 됨).</li>
+        <li>보드를 USB 케이블로 PC에 꽂습니다. ESP32-S3 보드는 <b>UART</b>(또는 COM)라고 적힌 단자에 꽂으세요.</li>
+        <li>아래 <b>설치</b>를 누르고, 목록에서 보드의 포트(USB 직렬 장치, COM…)를 고릅니다.</li>
+        <li>"Erase device"(기기 지우기)는 <b>새 보드면 체크</b>하세요. 이미 쓰던 ClipKey를 다시 설치할 때 체크하면 폰·PC 등록이 지워집니다.</li>
+        <li>1분 정도 기다리면 끝납니다. 보드가 다시 켜지고 블루투스 이름 <b>ClipKey-XXXX</b>로 보입니다.</li>
+      </ol>
+      <esp-web-install-button manifest="manifest.json">
+        <button slot="activate" class="btn primary">설치</button>
+        <span slot="unsupported" class="unsupported">이 브라우저는 USB 직렬 연결을 지원하지 않습니다. PC의 크롬 또는 엣지로 여세요.</span>
+        <span slot="not-allowed" class="unsupported">보안 연결(https)에서만 설치할 수 있습니다.</span>
+      </esp-web-install-button>
+    </section>
+
+    <section>
+      <h2>설치한 다음</h2>
+      <ol>
+        <li>보드의 <b>BOOT</b> 버튼을 짧게 누른 뒤, 폰 앱에서 연결해 등록합니다.</li>
+        <li>별명을 정하면 이름이 <b>ClipKey-별명</b>으로 바뀌어 여러 대를 구분하기 쉽습니다.</li>
+        <li>이후 새 펌웨어는 폰 앱의 <b>설정 → 펌웨어 → 최신 버전으로 업데이트</b>로 받습니다.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>연결이 안 될 때</h2>
+      <ul>
+        <li>포트 목록에 보드가 없으면 데이터 전송이 되는 USB 케이블인지 확인하고, 다른 단자에 꽂아 보세요.</li>
+        <li>연결에 실패하면 보드의 <b>BOOT</b> 버튼을 누른 채 <b>RESET</b>(EN)을 한 번 눌렀다 떼고, 다시 설치를 누르세요.</li>
+        <li>Windows에서 포트가 안 보이면 보드의 USB 칩 드라이버(CH340/CH343, CP210x)를 설치하세요.</li>
+      </ul>
+    </section>
+
+    <p class="hint"><a href="../">← ClipKey 앱으로</a></p>
+  </main>
+  <script type="module">
+    // Which firmware version this page installs (the newest published one).
+    fetch('manifest.json', { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => {
+        if (m?.version) document.getElementById('version').textContent = `펌웨어 ${m.version}`
+      })
+      .catch(() => undefined)
+  </script>
+</body>
+</html>
