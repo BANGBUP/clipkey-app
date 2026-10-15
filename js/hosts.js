@@ -7,7 +7,7 @@ import { parseDeviceEvent } from './devevents.js'
 const ADDR_LEN = 6
 const HOST_HEADER = 1 + 1 + 1 + ADDR_LEN + 1 + 1 + 1 // type, index, addr type, addr, profile, flags, name len
 
-const FLAG = Object.freeze({ CONNECTED: 1 << 0, DETECTED: 1 << 1, ACTIVE: 1 << 2 })
+const FLAG = Object.freeze({ CONNECTED: 1 << 0, DETECTED: 1 << 1, ACTIVE: 1 << 2, AWAKE_OFF: 1 << 3 })
 
 function parseHost(bytes) {
   if (bytes.length < HOST_HEADER) throw new Error(`기기 목록 항목 길이 오류: ${bytes.length}`)
@@ -28,6 +28,7 @@ function parseHost(bytes) {
       connected: (flags & FLAG.CONNECTED) !== 0,
       detected: (flags & FLAG.DETECTED) !== 0,
       active: (flags & FLAG.ACTIVE) !== 0,
+      awakeOff: (flags & FLAG.AWAKE_OFF) !== 0, // keep-awake turned off for this PC
       name: new TextDecoder().decode(bytes.slice(HOST_HEADER, HOST_HEADER + nameLen)),
       alias,
     }),
@@ -116,6 +117,13 @@ export function encodeSetHostAlias(addr, alias) {
   const bytes = new TextEncoder().encode(String(alias ?? '').trim())
   if (bytes.length > NICKNAME_MAX_BYTES) throw new Error(`별명이 너무 깁니다 (최대 ${NICKNAME_MAX_BYTES}바이트, 한글 약 10자)`)
   return Uint8Array.from([FRAME.SET_HOST_ALIAS, ...addrBytes(addr), ...bytes])
+}
+
+/** Keep-awake on / off for one PC: the wired one (kind TARGET.USB) or a Bluetooth one. */
+export function encodeSetPcKeepAwake({ kind, addr, on }) {
+  if (kind === TARGET.BLE && !addr) throw new Error('블루투스 PC 주소가 필요합니다')
+  const where = kind === TARGET.BLE ? addrBytes(addr) : [0, 0, 0, 0, 0, 0, 0]
+  return Uint8Array.from([FRAME.SET_PC_KEEP_AWAKE, kind, ...where, on ? 1 : 0])
 }
 
 /** What to call a paired host: the user's alias, else its own name, else its address. */

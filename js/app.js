@@ -20,6 +20,7 @@ import { setupPcPairing } from './pcpair.js'
 import { setupHostsUi } from './hostsui.js'
 import { setupNickname } from './nickname.js'
 import { setupTarget } from './target.js'
+import { setupKeepAwakePcs } from './keepawakepcs.js'
 import { setupPhrases } from './phrases.js'
 import { setupDebug } from './debug.js'
 import { setupFirmwareUi } from './fwui.js'
@@ -68,6 +69,7 @@ let pcRx = null
 let usbMode = null
 let pcPair = null
 let hostsUi = null
+let keepAwakePcs = null
 let nickname = null
 let phrases = null
 let firmwareUi = null
@@ -384,6 +386,7 @@ function renderKeepAwake(status) {
   const minutes = $('keepAwakeMin')
   const keySelect = $('keepAwakeKey')
   ;[toggle, minutes, keySelect].forEach((el) => (el.disabled = !status))
+  keepAwakePcs?.render(status)
   if (!status) return
   toggle.checked = status.keepAwakeSeconds > 0
   if (status.keepAwakeSeconds > 0 && document.activeElement !== minutes) {
@@ -481,10 +484,14 @@ function init() {
   hostsUi = setupHostsUi({
     client,
     notify,
-    onChange: () => renderTarget(client.status),
+    onChange: () => {
+      renderTarget(client.status)
+      keepAwakePcs?.render(client.status)
+    },
     onSelect: (host) => target?.selectHost(host),
   })
   target = setupTarget({ client, sender, notify, getHosts: () => hostsUi.hosts })
+  keepAwakePcs = setupKeepAwakePcs({ client, notify, getHosts: () => hostsUi.hosts, refreshHosts: () => hostsUi.refresh() })
   setupDebug({ notify })
   setupReport({ $, notify, log, getLog: () => appLog.lines().join('\n'), getContext: reportContext })
   setupFactoryReset({

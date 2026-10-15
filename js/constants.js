@@ -67,6 +67,7 @@ export const FRAME = Object.freeze({
   OTA_ABORT: 0x25, // [0x25]
   BYE: 0x26, // [0x26] leaving: the device drops the link itself (Android may otherwise keep it)
   FACTORY_RESET: 0x27, // [0x27, "RESET"] forget all phones and PCs, then restart
+  SET_PC_KEEP_AWAKE: 0x28, // [0x28, kind 1 wired | 2 BT, addr type, addr x6, on 0|1] per PC
 })
 
 // Where keystrokes go (status byte 17 reports the link actually in use).
@@ -159,6 +160,11 @@ export const STATUS_FLAG = Object.freeze({
 })
 
 // STATUS caps byte
+// STATUS byte 19: per-PC keep-awake (Bluetooth PCs: the HOST flag in the paired list)
+export const AWAKE_FLAG = Object.freeze({
+  USB_OFF: 1 << 0, // the wired PC gets no keep-awake taps
+})
+
 export const CAPS = Object.freeze({
   USB_OTG: 1 << 0, // ESP32-S3: wired keyboard / USB host modes exist (original ESP32: Bluetooth only)
   NO_SETUP_CODE: 1 << 1, // no setup code stored: phones register only via the BOOT window
@@ -170,7 +176,7 @@ export const CAPS = Object.freeze({
 // Setup code used while the BOOT registration window is open (no code needed then).
 export const REGISTER_DEFAULT_CODE = '0000'
 
-export const STATUS_LEN = 19 // bytes in a full STATUS read (older firmware sends fewer)
+export const STATUS_LEN = 20 // bytes in a full STATUS read (older firmware sends fewer)
 
 // STATUS byte 18: HID LED bits of the PC currently receiving keystrokes.
 export const HOST_LED = Object.freeze({

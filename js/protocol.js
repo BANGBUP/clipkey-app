@@ -1,6 +1,6 @@
 // Binary encoding of frames sent to / received from the firmware.
 
-import { OP, ITEM, FRAME, AUTH_FRAME, STATUS_FLAG, KEEP_AWAKE, KEEP_AWAKE_KEYS, USB_MODE, PAIR_ACTION, CAPS, HOST_LED, REGISTER_DEFAULT_CODE } from './constants.js'
+import { AWAKE_FLAG, OP, ITEM, FRAME, AUTH_FRAME, STATUS_FLAG, KEEP_AWAKE, KEEP_AWAKE_KEYS, USB_MODE, PAIR_ACTION, CAPS, HOST_LED, REGISTER_DEFAULT_CODE } from './constants.js'
 
 export const MAX_ITEMS_PER_FRAME = 90 // 1 + 90*2 = 181 bytes, fits one long write comfortably
 
@@ -179,5 +179,8 @@ export function parseStatus(view) {
     scrollLock: view.byteLength >= 19 ? (view.getUint8(18) & HOST_LED.SCROLL_LOCK) !== 0 : undefined,
     compose: view.byteLength >= 19 ? (view.getUint8(18) & HOST_LED.COMPOSE) !== 0 : undefined,
     kana: view.byteLength >= 19 ? (view.getUint8(18) & HOST_LED.KANA) !== 0 : undefined,
+    // Firmware 1.0.31+: keep-awake can be turned off per PC.
+    pcKeepAwake: view.byteLength >= 20,
+    usbAwakeOff: view.byteLength >= 20 && (view.getUint8(19) & AWAKE_FLAG.USB_OFF) !== 0,
   })
 }
