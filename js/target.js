@@ -1,6 +1,6 @@
-// "입력 대상": which connected PC receives keystrokes. A plain label with one PC, one
-// button per PC for two or three (one tap switches, e.g. the wired PC and a Bluetooth PC on
-// ESP32-S3), and a selector beyond that.
+// The connected PCs by name, the one receiving keystrokes in green: one PC is a plain
+// green name, two or three are buttons (one tap switches, e.g. the wired PC and a Bluetooth
+// PC on ESP32-S3), more a selector. No PC: "PC 미연결".
 
 import { TARGET } from './constants.js'
 import { encodeSelectTarget, hostTitle } from './hosts.js'
@@ -59,11 +59,11 @@ export function setupTarget({ client, sender, notify, getHosts }) {
     const options = candidates(status)
     if (options.length < 2) shownKey = ''
     if (options.length === 0) {
-      label.replaceChildren(document.createTextNode(status.pcConnected ? '블루투스 PC' : ''))
+      label.replaceChildren(pill(status.pcConnected ? '블루투스 PC' : 'PC 미연결', status.pcConnected ? 'on' : 'off'))
       return
     }
     if (options.length === 1) {
-      label.replaceChildren(document.createTextNode(options[0].title))
+      label.replaceChildren(pill(options[0].title, 'on'))
       return
     }
     // Status updates arrive often while typing: don't rebuild (and close) an open selector.
@@ -86,6 +86,12 @@ export function setupTarget({ client, sender, notify, getHosts }) {
       select(options.find((o) => o.value === selectEl.value))
     })
     label.replaceChildren(selectEl)
+  }
+
+  function pill(text, state) {
+    const el = Object.assign(document.createElement('span'), { className: `target-pill ${state}`, textContent: text })
+    el.title = state === 'on' ? `입력 대상: ${text}` : '연결된 PC가 없습니다'
+    return el
   }
 
   function buttons(options, current) {

@@ -143,8 +143,6 @@ function renderStatus(status) {
   keyboard?.setEnabled(connected)
   keyboard?.setApple(connected && isAppleHost())
   if (!connected) {
-    setChip('pc', 'PC')
-    document.querySelector('[data-chip="pc"]').title = ''
     renderIme(null)
     renderLeds(null)
     setChip('usb', 'USB')
@@ -158,9 +156,6 @@ function renderStatus(status) {
     lastHostKey = ''
     return
   }
-  const hostKind = status.hostProfile === HOST_PROFILE.APPLE ? ' (iPad/Mac)' : status.hostProfile ? ' (Windows)' : ''
-  setChip('pc', status.pcConnected ? 'PC 연결됨' : 'PC 미연결', status.pcConnected ? 'on' : 'warn')
-  document.querySelector('[data-chip="pc"]').title = hostKind.trim()
   renderIme(status)
   renderLeds(status)
   if (status.hostMode) {
