@@ -50,11 +50,16 @@ export function parseSecureMessage(bytes) {
       const verAt = 2 + len
       const verLen = bytes.length > verAt ? bytes[verAt] : 0
       const chipAt = verAt + 1 + verLen
+      const macAt = chipAt + 1 // firmware 1.0.30+
+      const mac = bytes.length >= macAt + 6
+        ? [...bytes.slice(macAt, macAt + 6)].map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(':')
+        : null
       return {
         type: SECURE_MSG.DEVICE_INFO,
         nickname: decode(2, len),
         version: decode(verAt + 1, verLen),
         chip: bytes.length > chipAt ? bytes[chipAt] : null,
+        mac,
       }
     }
     case SECURE_MSG.OTA_PROGRESS:

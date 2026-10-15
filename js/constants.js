@@ -81,7 +81,7 @@ export const SECURE_MSG = Object.freeze({
   PAIR_PROMPT: 0x01, // [0x01, state, passkey u32 LE]
   HOST: 0x02, // [0x02, index, addr type, addr x6, profile, flags, name len, name, alias len, alias]
   HOSTS_END: 0x03, // [0x03, total]
-  DEVICE_INFO: 0x04, // [0x04, nick len, nick, version len, version, chip]
+  DEVICE_INFO: 0x04, // [0x04, nick len, nick, version len, version, chip, Bluetooth MAC[6]]
   OTA_RESULT: 0x05, // [0x05, phase 1 begin | 2 end, result 0 ok | 1 rejected | 2 failed]
   DEVICE_LOG: 0x06, // [0x06, text...] device event (older firmware)
   PC_RX: 0x07, // [0x07, state, received u16 LE, total u16 LE]  PC -> phone text progress (pcrx.js)

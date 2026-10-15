@@ -34,6 +34,15 @@ export function setupNickname({ client, notify, onChange }) {
     field.focus()
   }
 
+  // Which board this is, whatever its nickname: "ClipKey-0F22 · 88:13:BF:69:0F:22".
+  function showDeviceId(mac) {
+    const out = $('deviceIdInfo')
+    if (!out) return
+    if (mac === undefined) out.textContent = '-'
+    else if (!mac) out.textContent = '펌웨어 1.0.30 이상에서 표시'
+    else out.textContent = `ClipKey-${mac.slice(-5).replace(':', '')} · ${mac}`
+  }
+
   $('nicknameSaveBtn').addEventListener('click', () => save(input.value))
 
   return Object.freeze({
@@ -42,11 +51,13 @@ export function setupNickname({ client, notify, onChange }) {
       if (msg.type !== SECURE_MSG.DEVICE_INFO) return
       nickname = msg.nickname
       if (document.activeElement !== input) input.value = nickname
+      showDeviceId(msg.mac)
       onChange(nickname)
     },
     reset() {
       nickname = ''
       input.value = ''
+      showDeviceId(undefined)
       onChange('')
     },
     get value() {
