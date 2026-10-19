@@ -182,7 +182,7 @@ export const CAPS = Object.freeze({
 // Setup code used while the BOOT registration window is open (no code needed then).
 export const REGISTER_DEFAULT_CODE = '0000'
 
-export const STATUS_LEN = 20 // bytes in a full STATUS read (older firmware sends fewer)
+export const STATUS_LEN = 21 // bytes in a full STATUS read (older firmware sends fewer)
 
 // STATUS byte 18: HID LED bits of the PC currently receiving keystrokes.
 export const HOST_LED = Object.freeze({

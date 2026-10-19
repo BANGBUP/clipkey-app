@@ -183,6 +183,7 @@ export function parseStatus(view) {
     pcKeepAwake: view.byteLength >= 20,
     usbAwakeOff: view.byteLength >= 20 && (view.getUint8(19) & AWAKE_FLAG.USB_OFF) !== 0,
     awakeFlags: view.byteLength >= 20 ? view.getUint8(19) : 0,
+    btPcs: view.byteLength >= 21 ? view.getUint8(20) : null, // firmware 1.0.34+: Bluetooth PCs connected
     awakeSchedule: view.byteLength >= 15 && (view.getUint8(14) & CAPS.AWAKE_SCHEDULE) !== 0, // firmware 1.0.32+
   })
 }

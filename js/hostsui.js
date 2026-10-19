@@ -28,6 +28,7 @@ export function setupHostsUi({ client, notify, onChange = () => {}, onSelect = (
   let incoming = [] // HOST entries by index until HOSTS_END
   let hosts = []
   let retries = 0
+  let checking = null // address text of a PC whose 연결 확인 was pressed
   const MAX_RETRIES = 2
 
   const send = (frame) => client.send(frame).catch((e) => notify(`전송 실패: ${errorText(e)}`))
@@ -86,6 +87,31 @@ export function setupHostsUi({ client, notify, onChange = () => {}, onSelect = (
     })
   }
 
+  // The ClipKey cannot call a PC: the PC connects to it. This re-reads the list, and if the
+  // PC is really not connected, says how to make the PC connect again.
+  function checkButton(host) {
+    return el('button', {
+      className: 'btn small',
+      textContent: '연결 확인',
+      onclick: () => {
+        checking = formatHostAddr(host.addr)
+        refresh()
+      },
+    })
+  }
+
+  function reportCheck() {
+    if (checking === null) return
+    const host = hosts.find((h) => formatHostAddr(h.addr) === checking)
+    checking = null
+    if (!host) return
+    notify(
+      host.connected
+        ? `${hostTitle(host)}: 연결되어 있습니다`
+        : `${hostTitle(host)}: 아직 연결 안 됨. PC의 블루투스 설정에서 ClipKey를 눌러 "연결"하거나, PC 블루투스를 껐다 켜 주세요`,
+    )
+  }
+
   function render() {
     if (!client.connected) {
       list.replaceChildren(el('p', { className: 'hint', textContent: '기기에 연결하면 목록이 표시됩니다.' }))
@@ -113,6 +139,7 @@ export function setupHostsUi({ client, notify, onChange = () => {}, onSelect = (
             ...(host.connected && !host.active
               ? [el('button', { className: 'btn small primary', textContent: '여기로 입력', onclick: () => onSelect(host) })]
               : []),
+            ...(host.connected ? [] : [checkButton(host)]),
             renameButton(host),
             deleteButton(host, title),
           ]),
@@ -143,6 +170,7 @@ export function setupHostsUi({ client, notify, onChange = () => {}, onSelect = (
         hosts = complete
         render()
         onChange(hosts)
+        reportCheck()
       }
     },
     render,

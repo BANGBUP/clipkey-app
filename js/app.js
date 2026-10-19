@@ -137,7 +137,8 @@ function renderLeds(status) {
 
 // Bluetooth PCs connected right now, from the paired list: "블루투스 연결됨", "블루투스 2대 연결됨".
 function renderBtChip(status) {
-  const count = status ? (hostsUi?.hosts ?? []).filter((h) => h.connected).length : 0
+  const listed = (hostsUi?.hosts ?? []).filter((h) => h.connected).length
+  const count = status ? (status.btPcs ?? listed) : 0
   const text = count > 1 ? `블루투스 ${count}대 연결됨` : count === 1 ? '블루투스 연결됨' : '블루투스 미연결'
   setChip('bt', text, count > 0 ? 'on' : '')
   document.querySelector('[data-chip="bt"]').classList.toggle('hidden', !status)
@@ -183,7 +184,7 @@ function renderStatus(status) {
   usbMode?.render(status)
   pcPair?.render(status)
   // A PC just paired, connected, disconnected or was identified: refresh the paired list.
-  const hostKey = `${status.pcConnected}:${status.hostProfile}:${status.usbPc}:${status.activeConn}:${status.targetKind}`
+  const hostKey = `${status.pcConnected}:${status.hostProfile}:${status.usbPc}:${status.activeConn}:${status.targetKind}:${status.btPcs}`
   if (hostKey !== lastHostKey) log(`status: pc=${status.pcConnected} profile=${status.hostProfile} usb=${status.usbPc} conn=${status.activeConn} target=${status.targetKind}`)
   const paired = status.pairAction !== lastPairAction && status.pairAction === PAIR_ACTION.DONE
   if (paired || (lastHostKey && hostKey !== lastHostKey)) hostsUi?.refresh()

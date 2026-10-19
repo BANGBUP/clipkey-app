@@ -1,16 +1,16 @@
 {
   "esp32": {
-    "version": "1.0.33",
+    "version": "1.0.34",
     "file": "clipkey-esp32.ckfw",
-    "size": 639828,
-    "sha256": "95b02e42dce8d0c04ff2a9a5f31c637227a47a4e2346f85a22986d3443953179",
-    "source": "2a108584d5954ca1"
+    "size": 639844,
+    "sha256": "17978fb1feafdea7db6f10364bc5370926b8ca80a3f06f337be435a0ba8f99f7",
+    "source": "525f83f4a8643df1"
   },
   "esp32s3": {
-    "version": "1.0.33",
+    "version": "1.0.34",
     "file": "clipkey-esp32s3.ckfw",
-    "size": 745716,
-    "sha256": "0330fe07b38e821c31ff57a634c08a2e7cfebb65a5f8e923140c6fefa1945b32",
-    "source": "2a108584d5954ca1"
+    "size": 745732,
+    "sha256": "b43916aa1b0de7cc9289a17b16ea8600a84a68e26ec92285fe84f17bd535a513",
+    "source": "525f83f4a8643df1"
   }
 }
