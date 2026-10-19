@@ -135,6 +135,14 @@ function renderLeds(status) {
   }
 }
 
+// Bluetooth PCs connected right now, from the paired list: "블루투스 연결됨", "블루투스 2대 연결됨".
+function renderBtChip(status) {
+  const count = status ? (hostsUi?.hosts ?? []).filter((h) => h.connected).length : 0
+  const text = count > 1 ? `블루투스 ${count}대 연결됨` : count === 1 ? '블루투스 연결됨' : '블루투스 미연결'
+  setChip('bt', text, count > 0 ? 'on' : '')
+  document.querySelector('[data-chip="bt"]').classList.toggle('hidden', !status)
+}
+
 function renderStatus(status) {
   sendStats?.update() // the target PC (Apple or not) changes the estimate
   typingBar?.onStatus(status)
@@ -142,6 +150,7 @@ function renderStatus(status) {
   if (status) firmwareUi?.onStatus()
   const connected = Boolean(status)
   setChip('link', connected ? `${deviceLabel()} 연결됨` : '기기 미연결', connected ? 'on' : 'bad')
+  renderBtChip(status)
   $('connectBtn').textContent = connected ? '연결됨' : '연결'
   $('connectBtn').disabled = connected
   keyboard?.setEnabled(connected)
@@ -489,6 +498,7 @@ function init() {
     client,
     notify,
     onChange: () => {
+      renderBtChip(client.status)
       renderTarget(client.status)
       keepAwakePcs?.render(client.status)
     },
