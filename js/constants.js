@@ -68,6 +68,8 @@ export const FRAME = Object.freeze({
   BYE: 0x26, // [0x26] leaving: the device drops the link itself (Android may otherwise keep it)
   FACTORY_RESET: 0x27, // [0x27, "RESET"] forget all phones and PCs, then restart
   SET_PC_KEEP_AWAKE: 0x28, // [0x28, kind 1 wired | 2 BT, addr type, addr x6, on 0|1] per PC
+  SET_CLOCK: 0x29, // [0x29, local time u32 LE] seconds since 1970-01-01 00:00 local time
+  SET_AWAKE_SCHEDULE: 0x2a, // [0x2A, on, days (bit0 Sun..bit6 Sat), count, (start, end minute u16 LE) x0..4]
 })
 
 // Where keystrokes go (status byte 17 reports the link actually in use).
@@ -163,6 +165,9 @@ export const STATUS_FLAG = Object.freeze({
 // STATUS byte 19: per-PC keep-awake (Bluetooth PCs: the HOST flag in the paired list)
 export const AWAKE_FLAG = Object.freeze({
   USB_OFF: 1 << 0, // the wired PC gets no keep-awake taps
+  SCHEDULE: 1 << 1, // keep-awake only in the scheduled hours
+  CLOCK_SET: 1 << 2, // the phone told the time since the last restart
+  RESTING: 1 << 3, // outside the scheduled hours right now: no taps
 })
 
 export const CAPS = Object.freeze({
@@ -170,6 +175,7 @@ export const CAPS = Object.freeze({
   NO_SETUP_CODE: 1 << 1, // no setup code stored: phones register only via the BOOT window
   TYPING_STOPPED: 1 << 3, // BOOT pressed while typing: the app must stop sending too
   PACING: 1 << 4, // PAUSE / PACE items and a separate iPad·Mac 한/영 wait are understood
+  AWAKE_SCHEDULE: 1 << 5, // SET_CLOCK / SET_AWAKE_SCHEDULE are understood
   REG_WINDOW: 1 << 2, // BOOT was pressed: one phone may register with REGISTER_DEFAULT_CODE (60 s)
 })
 

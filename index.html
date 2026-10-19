@@ -120,7 +120,15 @@
           <select id="keepAwakeKey" class="inline-select"></select>
         </label>
         <div id="keepAwakePcs" class="awake-pcs hidden"></div>
-        <p class="hint">PC에 이 시간 동안 키 입력이 없으면 기기가 선택한 키를 누릅니다. 유선·블루투스로 PC가 여러 대 연결되어 있으면 긴 글을 입력하는 중에도 입력 대상이 아닌 PC에 같은 간격으로 눌러 모두 깨어 있게 하고, "보낼 PC"에서 PC별로 끌 수 있습니다(펌웨어 1.0.31 이상). 리눅스 터미널처럼 F키가 ~ 등의 글자로 찍히는 PC는 Shift를 고르세요. F13~F24는 거의 모든 프로그램이 무시하는 키이고, 일부 보안 프로그램이 F키를 입력으로 치지 않으면 Shift를 고르세요. 화면보호기 대기 시간보다 짧게 정하세요. 설정은 기기에 저장되어 폰 앱을 닫아도, 기기를 껐다 켜도 계속 동작합니다.</p>
+        <div id="awakeSchedule" class="awake-schedule hidden">
+          <label class="check"><input type="checkbox" id="awakeScheduleOn"> 정한 시간대에만 작동</label>
+          <div id="awakeDays" class="day-buttons" role="group" aria-label="요일"></div>
+          <div id="awakeRanges" class="awake-ranges"></div>
+          <button type="button" id="awakeRangeAdd" class="btn small">+ 시간대 추가</button>
+          <p class="hint" id="awakeScheduleSummary"></p>
+          <p class="hint">예: 09:00~12:00, 13:00~18:00으로 두면 점심시간과 퇴근 후에는 누르지 않습니다. 기기에는 시계가 없어 폰이 연결될 때 현재 시각을 알려 줍니다. 기기가 꺼졌다 켜진 뒤 폰이 아직 연결되지 않았으면 시각을 몰라 하루 종일 작동합니다. (펌웨어 1.0.32 이상)</p>
+        </div>
+        <p class="hint">PC에 이 시간 동안 키 입력이 없으면 기기가 선택한 키를 누릅니다. 유선·블루투스로 PC가 여러 대 연결되어 있으면 긴 글을 입력하는 중에도 입력 대상이 아닌 PC에 같은 간격으로 눌러 모두 깨어 있게 하고, "보낼 PC"에서 PC별로 끌 수 있습니다(펌웨어 1.0.31 이상). F키는 리눅스 터미널에서 ~ 같은 글자로 찍힐 수 있고, Shift는 Windows에서 5번째마다 "고정 키" 창이 뜰 수 있습니다(Windows 설정 → 접근성 → 키보드 → 고정 키 바로 가기를 끄면 해결). F13~F24는 거의 모든 프로그램이 무시하는 키이고, 일부 보안 프로그램이 F키를 입력으로 치지 않으면 Shift를 고르세요. 화면보호기 대기 시간보다 짧게 정하세요. 설정은 기기에 저장되어 폰 앱을 닫아도, 기기를 껐다 켜도 계속 동작합니다.</p>
       </div>
       <div class="field">
         <strong>입력 속도</strong>

@@ -21,6 +21,7 @@ import { setupHostsUi } from './hostsui.js'
 import { setupNickname } from './nickname.js'
 import { setupTarget } from './target.js'
 import { setupKeepAwakePcs } from './keepawakepcs.js'
+import { setupAwakeSchedule } from './awakeschedule.js'
 import { setupPhrases } from './phrases.js'
 import { setupDebug } from './debug.js'
 import { setupFirmwareUi } from './fwui.js'
@@ -70,6 +71,7 @@ let usbMode = null
 let pcPair = null
 let hostsUi = null
 let keepAwakePcs = null
+let awakeSchedule = null
 let nickname = null
 let phrases = null
 let firmwareUi = null
@@ -233,7 +235,8 @@ const screenLock = createWakeLock() // the page freezes with the screen off: kee
 const sender = createSender(client, (progress) => typingBar?.onSending(progress))
 
 async function pushSettings() {
-  for (const frame of settingsFrames(settings, { pacing: Boolean(client.status?.pacing) })) {
+  const frames = [...settingsFrames(settings, { pacing: Boolean(client.status?.pacing) }), ...(awakeSchedule?.frames() ?? [])]
+  for (const frame of frames) {
     await client.send(frame)
   }
   hostsUi?.refresh()
@@ -387,6 +390,7 @@ function renderKeepAwake(status) {
   const keySelect = $('keepAwakeKey')
   ;[toggle, minutes, keySelect].forEach((el) => (el.disabled = !status))
   keepAwakePcs?.render(status)
+  awakeSchedule?.render()
   if (!status) return
   toggle.checked = status.keepAwakeSeconds > 0
   if (status.keepAwakeSeconds > 0 && document.activeElement !== minutes) {
@@ -491,6 +495,7 @@ function init() {
     onSelect: (host) => target?.selectHost(host),
   })
   target = setupTarget({ client, sender, notify, getHosts: () => hostsUi.hosts })
+  awakeSchedule = setupAwakeSchedule({ client, notify })
   keepAwakePcs = setupKeepAwakePcs({ client, notify, getHosts: () => hostsUi.hosts, refreshHosts: () => hostsUi.refresh() })
   setupDebug({ notify })
   setupReport({ $, notify, log, getLog: () => appLog.lines().join('\n'), getContext: reportContext })

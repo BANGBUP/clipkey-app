@@ -182,5 +182,7 @@ export function parseStatus(view) {
     // Firmware 1.0.31+: keep-awake can be turned off per PC.
     pcKeepAwake: view.byteLength >= 20,
     usbAwakeOff: view.byteLength >= 20 && (view.getUint8(19) & AWAKE_FLAG.USB_OFF) !== 0,
+    awakeFlags: view.byteLength >= 20 ? view.getUint8(19) : 0,
+    awakeSchedule: view.byteLength >= 15 && (view.getUint8(14) & CAPS.AWAKE_SCHEDULE) !== 0, // firmware 1.0.32+
   })
 }
