@@ -135,13 +135,12 @@ function renderLeds(status) {
   }
 }
 
-// Bluetooth PCs connected right now, from the paired list: "블루투스 연결됨", "블루투스 2대 연결됨".
+// Bluetooth PCs connected right now: "블투", "블투 2". Hidden when none (short enough for one line).
 function renderBtChip(status) {
   const listed = (hostsUi?.hosts ?? []).filter((h) => h.connected).length
   const count = status ? (status.btPcs ?? listed) : 0
-  const text = count > 1 ? `블루투스 ${count}대 연결됨` : count === 1 ? '블루투스 연결됨' : '블루투스 미연결'
-  setChip('bt', text, count > 0 ? 'on' : '')
-  document.querySelector('[data-chip="bt"]').classList.toggle('hidden', !status)
+  setChip('bt', count > 1 ? `블투 ${count}` : '블투', 'on')
+  document.querySelector('[data-chip="bt"]').classList.toggle('hidden', count === 0)
 }
 
 function renderStatus(status) {
@@ -150,7 +149,7 @@ function renderStatus(status) {
   if (status?.typingStopped && sender.active) sender.stopLocal() // stopped on the device itself
   if (status) firmwareUi?.onStatus()
   const connected = Boolean(status)
-  setChip('link', connected ? `${deviceLabel()} 연결됨` : '기기 미연결', connected ? 'on' : 'bad')
+  setChip('link', connected ? deviceLabel() : '기기 미연결', connected ? 'on' : 'bad')
   renderBtChip(status)
   $('connectBtn').textContent = connected ? '연결됨' : '연결'
   $('connectBtn').disabled = connected
@@ -160,6 +159,7 @@ function renderStatus(status) {
     renderIme(null)
     renderLeds(null)
     setChip('usb', 'USB')
+    document.querySelector('[data-chip="usb"]').classList.add('hidden')
     $('imeBelief').textContent = '-'
     renderKeepAwake(null)
     usbMode?.render(null)
@@ -172,13 +172,10 @@ function renderStatus(status) {
   }
   renderIme(status)
   renderLeds(status)
-  if (status.hostMode) {
-    setChip('usb', status.usbKeyboard ? 'USB 키보드 연결됨' : 'USB 키보드 없음', status.usbKeyboard ? 'on' : '')
-  } else {
-    setChip('usb', status.usbPc ? '유선 PC 연결됨' : '유선 미연결', status.usbPc ? 'on' : '')
-  }
-  // Bluetooth-only chips (original ESP32) have no USB port features.
-  document.querySelector('[data-chip="usb"]').classList.toggle('hidden', !status.usbOtg)
+  // Shown only while something is plugged in; Bluetooth-only chips (original ESP32) have no USB port.
+  setChip('usb', status.hostMode ? 'USB 키보드' : '유선', 'on')
+  const plugged = status.hostMode ? status.usbKeyboard : status.usbPc
+  document.querySelector('[data-chip="usb"]').classList.toggle('hidden', !status.usbOtg || !plugged)
   $('imeBelief').textContent = status.imeHangul ? '한글' : '영문'
   renderKeepAwake(status)
   usbMode?.render(status)

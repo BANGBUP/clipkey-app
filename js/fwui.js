@@ -147,7 +147,8 @@ export function setupFirmwareUi({ client, notify }) {
     })
     try {
       await stream.run()
-      log('streamed')
+      const { silences, resends } = stream.stats()
+      log(`streamed (${silences} silent waits, ${resends} resends)`)
       return total
     } catch (error) {
       if (!(error instanceof StreamUnsupportedError)) throw error

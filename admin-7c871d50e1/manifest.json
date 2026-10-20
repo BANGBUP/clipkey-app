@@ -1,6 +1,6 @@
 {
   "name": "ClipKey",
-  "version": "1.0.37",
+  "version": "1.0.38",
   "new_install_prompt_erase": true,
   "new_install_improv_wait_time": 0,
   "builds": [

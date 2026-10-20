@@ -22,6 +22,8 @@ export function createOtaStream({ total, chunkSize, windowBytes, stallMs, maxSta
   let wake = null
   let rewoundTo = -1 // last "resend from" position acted on
   let rewoundAt = 0
+  let silences = 0 // waits of stallMs with no note
+  let resends = 0 // "resend from" positions acted on
 
   const notify = () => {
     const w = wake
@@ -41,6 +43,7 @@ export function createOtaStream({ total, chunkSize, windowBytes, stallMs, maxSta
         next = written
         rewoundTo = written
         rewoundAt = Date.now()
+        resends += 1
       }
     } else if (written > confirmed) {
       confirmed = written
@@ -91,10 +94,11 @@ export function createOtaStream({ total, chunkSize, windowBytes, stallMs, maxSta
       if (await waitForNote(stallMs)) continue
       // Silence: the progress note (or the chunks) got lost. Resend from the last
       // confirmed point; if the device is further along it answers with "resend from".
+      silences += 1
       next = confirmed
     }
     if (failed) throw failed
   }
 
-  return Object.freeze({ run, onNote })
+  return Object.freeze({ run, onNote, stats: () => ({ silences, resends }) })
 }
