@@ -11,6 +11,8 @@ const log = (m) => appLog.add(`[ble] ${m}`)
 
 const STATUS_WAIT_MS = 1500
 const GATT_RETRY_DELAY_MS = 700
+const WRITE_STALL_MS = 8000 // a CMD write normally answers within ~100 ms
+const WRITE_SLOW_MS = 2000
 
 // Older Web Bluetooth implementations (e.g. some iOS BLE browsers) only have writeValue(),
 // which for our characteristics is a write with response too.
@@ -403,8 +405,32 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
       const counter = session.counter
       session = { ...session, counter: counter + 1 }
       const sealed = await sealFrame(session.key, counter, frame)
-      return writeWithResponse(chars.cmd, sealed)
+      return guardedWrite(chars.cmd, sealed, frame[0])
     })
+  }
+
+  /**
+   * A write the device never answers blocks every later GATT operation until Android gives
+   * up after 30 s (ATT timeout) and drops the link. Drop it ourselves sooner, so the
+   * reconnect starts right away, and log which frame it was.
+   */
+  async function guardedWrite(characteristic, value, frameType) {
+    const started = Date.now()
+    const name = `0x${frameType.toString(16).padStart(2, '0')}`
+    const timer = setTimeout(() => {
+      log(`write ${name} unanswered for ${WRITE_STALL_MS} ms: dropping the link to reconnect`)
+      disconnect()
+    }, WRITE_STALL_MS)
+    try {
+      return await writeWithResponse(characteristic, value)
+    } catch (error) {
+      log(`write ${name} failed after ${Date.now() - started} ms: ${describeError(error)}`)
+      throw error
+    } finally {
+      clearTimeout(timer)
+      const ms = Date.now() - started
+      if (ms >= WRITE_SLOW_MS) log(`write ${name} took ${ms} ms`)
+    }
   }
 
   /**
