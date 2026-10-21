@@ -140,6 +140,8 @@ export const KEEP_AWAKE_KEYS = Object.freeze({
   f14: { mod: 0, key: 0x69, label: 'F14' },
   f16: { mod: 0, key: 0x6b, label: 'F16' },
   f24: { mod: 0, key: 0x73, label: 'F24' },
+  rctrl: { mod: 0x10, key: 0, label: '오른쪽 Ctrl (터미널에 ~가 남는 PC용)' },
+  lctrl: { mod: 0x01, key: 0, label: '왼쪽 Ctrl' },
   lshift: { mod: 0x02, key: 0, label: '왼쪽 Shift (F키가 무시되는 PC용)' },
   rshift: { mod: 0x20, key: 0, label: '오른쪽 Shift' },
 })
