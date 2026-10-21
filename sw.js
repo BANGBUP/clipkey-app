@@ -1,6 +1,6 @@
 // Offline cache for the app shell. Network first so updates show up immediately.
 // scripts/build-site.sh stamps CACHE per deploy, so every release installs a new worker.
-const CACHE = 'clipkey-1.0.47-9dea354'
+const CACHE = 'clipkey-1.0.48-6ca3622'
 const SHELL = [
   './',
   'index.html',
@@ -9,6 +9,7 @@ const SHELL = [
   'icon.svg',
   'js/app.js',
   'js/keyboard.js',
+  'js/physkeys.js',
   'js/vkeys.js',
   'js/setupcode.js',
   'js/pcrx.js',

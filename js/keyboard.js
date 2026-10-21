@@ -16,6 +16,7 @@ import {
   keyItem,
   shortcutItem,
 } from './vkeys.js'
+import { createPhysicalKeys } from './physkeys.js'
 
 const NAV_ROWS = [
   ['esc', 'tab', 'capslock', 'printscreen', 'insert', 'delete'],
@@ -139,11 +140,44 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
     }
   })
 
+  // A physical keyboard on the phone: while this tab is open (and no text box has focus)
+  // every key goes to the PC as is.
+  const physical = createPhysicalKeys()
+  const panel = root.closest('.panel')
+  const listening = (event) => {
+    const field = event.target?.closest?.('input, textarea, select, [contenteditable="true"]')
+    return !field && panel?.classList.contains('active') && client.connected
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (!listening(event)) return
+    const action = physical.down(event)
+    if (!action) return
+    event.preventDefault() // Tab, Space, Backspace ... act on the PC, not on this page
+    if (action.ime) {
+      sender.sendFrame(encodeToggleIme()).catch(report)
+    } else if (action.tap) {
+      const { mod, next } = consumeModifiers(mods) // on-screen Ctrl / Shift ... still apply
+      mods = next
+      paintModifiers()
+      send({ mod: action.tap.mod | mod, key: action.tap.key })
+    }
+  })
+  document.addEventListener('keyup', (event) => {
+    if (!listening(event)) return
+    const action = physical.up(event)
+    if (!action) return
+    event.preventDefault()
+    if (action.tap) send(action.tap)
+  })
+  window.addEventListener('blur', () => physical.reset())
+
   return Object.freeze({
     setEnabled(enabled) {
       root.classList.toggle('disabled', !enabled)
       root.setAttribute('aria-disabled', String(!enabled))
       if (!enabled) {
+        physical.reset()
         mods = EMPTY_MODS
         paintModifiers()
       }
