@@ -234,7 +234,12 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 .order-last { order: 99; }
 
 /* PC row: connection, where text goes, and the 한/영 state like the Windows IME icon */
-.pc-row { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; min-height: 34px; }
+/* Stays at the top while the page scrolls: the target PC and 한/영 are checked all the time */
+.pc-bar {
+  position: sticky; top: 0; z-index: 9;
+  padding: 6px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.pc-row { display: flex; align-items: center; gap: 8px; margin: 0; min-height: 34px; }
 .pc-row .target { flex: 1; min-width: 0; font-weight: 600; color: var(--ok);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-row .target select { max-width: 100%; }
