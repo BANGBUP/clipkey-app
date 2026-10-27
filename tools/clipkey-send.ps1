@@ -5,6 +5,7 @@
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1                 # 클립보드 보내기
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -Text "안녕"    # 직접 입력한 텍스트
+  powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -Path 메모.txt  # 파일 그대로(받기 탭에서 저장)
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -DelayMs 20     # 깨지면 더 천천히
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -DryRun         # 키를 누르지 않고 신호 순서만 출력
 
@@ -16,16 +17,19 @@
   - 묶음 = 시작 신호 3,0,3,0,1,2,1,2 | 길이(2바이트) | 내용 | 확인값 CRC-16(2바이트)
   - 확인값: CRC-16/CCITT(다항식 0x1021, 초기값 0xFFFF), 길이+내용에 대해 계산
   - 내용: UTF-8 텍스트, 또는 압축이 더 짧으면 0x00 + deflate(raw) 압축본(앱이 풀어서 표시)
+         파일은 0x01, 압축 여부(1|0), 이름 길이, 이름(UTF-8), 파일 내용(압축이 더 짧으면 deflate)
+  - 최대 32768바이트(ESP32-S3). 1세대 ESP32는 4096바이트까지 받습니다.
   전송하는 동안 PC 키보드를 쓰지 마세요(캡스락이 계속 바뀜). 끝나면 잠금 키를 원래대로 되돌립니다.
 #>
 param(
     [string]$Text,
+    [string]$Path,
     [ValidateRange(5, 1000)][int]$DelayMs = 5,
     [switch]$NoCompress,
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
-$MaxBytes = 4096
+$MaxBytes = 32768
 
 # 신호 보내기는 C#으로: PowerShell로 키를 누르면 신호 한 번에 약 11 ms가 더 걸렸습니다.
 Add-Type -Namespace ClipKey -Name LedKeys -MemberDefinition @'
@@ -89,13 +93,13 @@ function Format-Duration([double]$seconds) {
     return "{0}분 {1}초" -f [int][math]::Floor($s / 60), ($s % 60)
 }
 
-# deflate(raw) 압축. 앱은 첫 바이트 0x00을 보고 압축본임을 압니다(텍스트는 0x00으로 시작하지 않음).
+# deflate(raw) 압축(앞에 붙는 0x00·0x01 표시는 부르는 쪽에서)
 function Compress-Bytes([byte[]]$data) {
     $out = New-Object System.IO.MemoryStream
     $deflate = New-Object System.IO.Compression.DeflateStream($out, [System.IO.Compression.CompressionLevel]::Optimal)
     $deflate.Write($data, 0, $data.Length)
     $deflate.Close()
-    [byte[]](@([byte]0) + $out.ToArray())
+    , $out.ToArray()
 }
 
 function Get-Crc16([byte[]]$data) {
@@ -110,26 +114,49 @@ function Get-Crc16([byte[]]$data) {
     $crc
 }
 
+# 압축이 더 짧으면 압축본, 아니면 그대로
+function Get-Smaller([byte[]]$data) {
+    if (-not $NoCompress -and $data.Length -gt 0) {
+        $packed = Compress-Bytes $data
+        if ($packed.Length -lt $data.Length) { return @{ Bytes = $packed; Packed = $true } }
+    }
+    @{ Bytes = $data; Packed = $false }
+}
+
 # ---- 보낼 내용 ----
-$fromClipboard = -not $PSBoundParameters.ContainsKey('Text')
-if ($fromClipboard) {
-    $Text = Get-Clipboard -Raw
+if ($Path) {
+    $file = Get-Item -LiteralPath $Path
+    $raw = [IO.File]::ReadAllBytes($file.FullName)
+    $name = [Text.Encoding]::UTF8.GetBytes($file.Name)
+    if ($name.Length -gt 200) { $name = [Text.Encoding]::UTF8.GetBytes('file' + $file.Extension) }
+    $body = Get-Smaller $raw
+    $compressed = $body.Packed
+    $flags = if ($compressed) { 1 } else { 0 }
+    $payload = [byte[]](@([byte]1, [byte]$flags, [byte]$name.Length) + $name + $body.Bytes)
+    $what = "파일 {0} {1}바이트" -f $file.Name, $raw.Length
+    $preview = $file.Name
+} else {
+    $fromClipboard = -not $PSBoundParameters.ContainsKey('Text')
+    if ($fromClipboard) {
+        $Text = Get-Clipboard -Raw
+    }
+    if ([string]::IsNullOrEmpty($Text)) {
+        $why = if ($fromClipboard) { '클립보드가 비어 있습니다' } else { '-Text 값이 비어 있습니다' }
+        Write-Host "보낼 텍스트가 없습니다: $why." -ForegroundColor Red
+        exit 1
+    }
+    $raw = [Text.Encoding]::UTF8.GetBytes($Text)
+    $body = Get-Smaller $raw
+    $compressed = $body.Packed
+    if (-not $compressed -and $raw[0] -le 1) { $body = @{ Bytes = (Compress-Bytes $raw) }; $compressed = $true } # 표시 바이트와 헷갈리지 않게
+    $payload = if ($compressed) { [byte[]](@([byte]0) + $body.Bytes) } else { $raw }
+    $what = "{0}자 {1}바이트" -f [Globalization.StringInfo]::new($Text).LengthInTextElements, $raw.Length
+    $cut = 40
+    if ($Text.Length -gt $cut -and [char]::IsHighSurrogate($Text[$cut - 1])) { $cut-- } # 이모지 반쪽 방지
+    $preview = if ($Text.Length -gt $cut) { $Text.Substring(0, $cut) + '...' } else { $Text }
 }
-if ([string]::IsNullOrEmpty($Text)) {
-    $why = if ($fromClipboard) { '클립보드가 비어 있습니다' } else { '-Text 값이 비어 있습니다' }
-    Write-Host "보낼 텍스트가 없습니다: $why." -ForegroundColor Red
-    exit 1
-}
-$utf8 = [Text.Encoding]::UTF8.GetBytes($Text)
-$payload = $utf8
-$compressed = $false
-if (-not $NoCompress -and $utf8.Length -gt 0 -and $utf8[0] -ne 0) {
-    $packed = Compress-Bytes $utf8
-    if ($packed.Length -lt $utf8.Length) { $payload = $packed; $compressed = $true }
-}
-$charCount = [Globalization.StringInfo]::new($Text).LengthInTextElements
 if ($payload.Length -gt $MaxBytes) {
-    Write-Host ("너무 깁니다: {0}자, 보낼 크기 {1}바이트 (최대 {2}바이트)" -f $charCount, $payload.Length, $MaxBytes) -ForegroundColor Red
+    Write-Host ("너무 큽니다: {0}, 보낼 크기 {1}바이트 (최대 {2}바이트)" -f $what, $payload.Length, $MaxBytes) -ForegroundColor Red
     exit 1
 }
 
@@ -140,12 +167,9 @@ $sync = @(3, 0, 3, 0, 1, 2, 1, 2)
 $symbols = Get-Symbols $sync $frame
 $seconds = $symbols.Length * ($DelayMs + 1) / 1000
 
-$cut = 40
-if ($Text.Length -gt $cut -and [char]::IsHighSurrogate($Text[$cut - 1])) { $cut-- } # 이모지 반쪽 방지
-$preview = if ($Text.Length -gt $cut) { $Text.Substring(0, $cut) + '...' } else { $Text }
 Write-Host ("보낼 내용: {0}" -f $preview) -ForegroundColor Green
-$size = if ($compressed) { "{0}바이트, 압축하면 {1}바이트" -f $utf8.Length, $payload.Length } else { "{0}바이트" -f $payload.Length }
-Write-Host ("{0}자 ({1}), 예상 약 {2}. 전송 중에는 키보드를 쓰지 마세요. (멈추기: Ctrl+C)" -f $charCount, $size, (Format-Duration $seconds)) -ForegroundColor Yellow
+$size = if ($compressed) { ", 압축해서 {0}바이트" -f $payload.Length } else { '' }
+Write-Host ("{0}{1}, 예상 약 {2}. 전송 중에는 키보드를 쓰지 마세요. (멈추기: Ctrl+C)" -f $what, $size, (Format-Duration $seconds)) -ForegroundColor Yellow
 if ($DryRun) {
     Write-Output ($symbols -join '')
     exit 0
@@ -187,7 +211,7 @@ try {
         Write-Progress -Activity 'ClipKey로 보내는 중' -Status ("{0}/{1}바이트" -f [int]($done / 4), $frame.Length) -PercentComplete (100 * $done / $symbols.Length)
     }
     Write-Progress -Activity 'ClipKey로 보내는 중' -Completed
-    Write-Host ("보냈습니다: {0}자, {1}. 폰 앱의 받기 탭을 확인하세요." -f $charCount, (Format-Duration $clock.Elapsed.TotalSeconds)) -ForegroundColor Green
+    Write-Host ("보냈습니다: {0}, {1}. 폰 앱의 받기 탭을 확인하세요." -f $what, (Format-Duration $clock.Elapsed.TotalSeconds)) -ForegroundColor Green
 }
 finally {
     # 끝나거나 중간에 멈춰도 잠금 키를 원래 상태로 되돌립니다.

@@ -10,7 +10,13 @@ export const PC_RX_STATE = Object.freeze({
   TIMEOUT: 4, // the PC stopped sending
 })
 
-export const PC_TEXT_MAX = 4096
+export const PC_TEXT_MAX = 65535 // u16 length; the ClipKey takes 32 KB (ESP32-S3) or 4 KB (ESP32)
+
+// First payload byte (text itself never starts with these control characters):
+export const PAYLOAD = Object.freeze({
+  DEFLATE_TEXT: 0x00, // [0x00, raw deflate of UTF-8 text]
+  FILE: 0x01, // [0x01, flags (bit0 deflate), name length, name UTF-8, data]
+})
 
 const u16 = (bytes, at) => bytes[at] | (bytes[at + 1] << 8)
 
@@ -51,18 +57,45 @@ function onDone(rx) {
   if (!buffer) return { rx, event: null } // nothing collected (e.g. joined after the chunks)
   if (buffer.broken || buffer.filled !== buffer.total) return fail(rx, '일부가 빠졌습니다')
   // 0x00 first: the script sent it deflate-compressed (shorter); inflateText() opens it.
-  if (buffer.bytes[0] === 0) {
+  if (buffer.bytes[0] === PAYLOAD.DEFLATE_TEXT) {
     return { rx: { buffer: null }, event: { type: 'done', compressed: buffer.bytes.subarray(1), size: buffer.total } }
+  }
+  if (buffer.bytes[0] === PAYLOAD.FILE) {
+    const file = parseFilePayload(buffer.bytes)
+    if (!file) return fail(rx, '파일 정보가 잘못되었습니다')
+    return { rx: { buffer: null }, event: { type: 'file', ...file, size: buffer.total } }
   }
   const text = new TextDecoder('utf-8', { fatal: false }).decode(buffer.bytes)
   return { rx: { buffer: null }, event: { type: 'done', text, size: buffer.total } }
 }
 
+/** [0x01, flags, name length, name, data] -> { name, deflated, data } or null. */
+export function parseFilePayload(bytes) {
+  if (bytes.length < 3) return null
+  const nameEnd = 3 + bytes[2]
+  if (bytes[2] === 0 || nameEnd > bytes.length) return null
+  const name = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(3, nameEnd))
+  return { name, deflated: (bytes[1] & 1) !== 0, data: bytes.slice(nameEnd) }
+}
+
+/** Raw deflate -> bytes. */
+export async function inflateBytes(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
+}
+
 /** Opens a compressed text (raw deflate of UTF-8). */
 export async function inflateText(bytes) {
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
-  const plain = new Uint8Array(await new Response(stream).arrayBuffer())
-  return new TextDecoder('utf-8', { fatal: false }).decode(plain)
+  return new TextDecoder('utf-8', { fatal: false }).decode(await inflateBytes(bytes))
+}
+
+/** The file's bytes as text, or null when they are not valid UTF-8 (a binary file). */
+export function textOf(bytes) {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes) // a leading BOM is dropped by the decoder
+  } catch {
+    return null
+  }
 }
 
 /** Characters as a person counts them (an emoji or a 한글 syllable is one). */

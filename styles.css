@@ -311,6 +311,8 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 }
 .rx-item.expanded .rx-text { white-space: pre-wrap; word-break: break-word; overflow: visible; }
 .rx-item .row { flex-wrap: wrap; }
+.rx-head { display: flex; align-items: center; gap: 8px; }
+.rx-head .hint { flex: 1; min-width: 0; margin: 0; }
 
 .app-version { font-size: 12px; font-weight: 400; color: var(--muted); }
 

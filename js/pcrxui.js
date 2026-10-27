@@ -2,7 +2,7 @@
 // memory only (they may be passwords); just the auto-copy preference is saved.
 
 import { SECURE_MSG } from './constants.js'
-import { EMPTY_RX, reducePcRx, inflateText, charCount } from './pcrx.js'
+import { EMPTY_RX, reducePcRx, inflateText, inflateBytes, textOf, charCount } from './pcrx.js'
 
 const MAX_ITEMS = 10
 const PREF_KEY = 'clipkey.pcrx.v1'
@@ -21,6 +21,16 @@ function saveAutoCopy(autoCopy) {
   } catch {
     // storage unavailable: lasts for this session only
   }
+}
+
+// Saves the bytes as a download (Android: the Downloads folder).
+function saveFile(name, bytes) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }))
+  const a = Object.assign(document.createElement('a'), { href: url, download: name })
+  document.body.append(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
 const timeLabel = (date) => date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -69,10 +79,13 @@ export function setupPcReceive({ notify, toSendTab }) {
     const head = document.createElement('div')
     head.className = 'hint'
     const packed = item.compressed ? ` (압축 ${item.size}바이트)` : ` · ${item.size}바이트`
-    head.textContent = `${timeLabel(item.at)} · ${charCount(item.text)}자${packed}`
+    const what = item.file
+      ? `파일 ${item.file.name} · ${item.file.bytes.length}바이트${item.compressed ? ` (압축 ${item.size}바이트)` : ''}`
+      : `${charCount(item.text)}자${packed}`
+    head.textContent = `${timeLabel(item.at)} · ${what}`
     const text = document.createElement('pre')
     text.className = 'rx-text'
-    text.textContent = item.text
+    text.textContent = item.text ?? '(텍스트가 아닌 파일: 저장해서 여세요)'
     const actions = document.createElement('div')
     actions.className = 'row'
     const action = (label, run, extra = '') => {
@@ -89,13 +102,22 @@ export function setupPcReceive({ notify, toSendTab }) {
     })
     toggle.setAttribute('aria-expanded', 'false')
     text.addEventListener('click', () => toggle.click())
+    const textActions =
+      item.text === null
+        ? []
+        : [action('복사', () => copy(item.text)), action('보내기 탭으로', () => toSendTab(item.text))]
+    const fileActions = item.file ? [action('저장', () => saveFile(item.file.name, item.file.bytes))] : []
     actions.append(
-      toggle,
-      action('복사', () => copy(item.text)),
-      action('보내기 탭으로', () => toSendTab(item.text)),
+      ...textActions,
+      ...fileActions,
       action('삭제', () => setItems(items.filter((i) => i.id !== item.id)), 'danger'),
     )
-    box.append(head, text, actions)
+    // 펼치기 / 접기 at the top right: an opened long text needs no scrolling to close it
+    const top = document.createElement('div')
+    top.className = 'rx-head'
+    top.append(head)
+    if (item.text !== null) top.append(toggle)
+    box.append(top, text, actions)
     return box
   }
 
@@ -106,11 +128,26 @@ export function setupPcReceive({ notify, toSendTab }) {
   }
 
   async function received(text, size, compressed = false) {
-    setItems([{ id: nextId++, text, size, compressed, at: new Date() }, ...items].slice(0, MAX_ITEMS))
+    setItems([{ id: nextId++, text, file: null, size, compressed, at: new Date() }, ...items].slice(0, MAX_ITEMS))
     setStatus(`완료: ${charCount(text)}자를 받았습니다`)
     markUnseen()
     if (autoCopy.checked) await copy(text, 'PC에서 텍스트를 받아 클립보드에 복사했습니다')
     else notify('PC에서 텍스트를 받았습니다')
+  }
+
+  async function receivedFile({ name, deflated, data, size }) {
+    const bytes = deflated ? await inflateBytes(data) : data
+    const text = textOf(bytes)
+    setItems([{ id: nextId++, text, file: { name, bytes }, size, compressed: deflated, at: new Date() }, ...items].slice(0, MAX_ITEMS))
+    setStatus(`완료: 파일 ${name} (${bytes.length}바이트)를 받았습니다`)
+    markUnseen()
+    notify(`PC에서 파일 ${name}을 받았습니다. 받기 탭에서 저장하세요`)
+  }
+
+  const failed = (reason) => {
+    setStatus(`실패: ${reason}`)
+    notify(`PC에서 받기 실패: ${reason}`)
+    markUnseen()
   }
 
   function onSecure(msg) {
@@ -129,16 +166,13 @@ export function setupPcReceive({ notify, toSendTab }) {
     } else if (event.type === 'done' && event.compressed) {
       inflateText(event.compressed)
         .then((text) => received(text, event.size, true))
-        .catch(() => {
-          setStatus('실패: 압축을 풀지 못했습니다')
-          notify('PC에서 받기 실패: 압축을 풀지 못했습니다')
-        })
+        .catch(() => failed('압축을 풀지 못했습니다'))
+    } else if (event.type === 'file') {
+      receivedFile(event).catch(() => failed('파일 압축을 풀지 못했습니다'))
     } else if (event.type === 'done') {
       received(event.text, event.size)
     } else if (event.type === 'failed') {
-      setStatus(`실패: ${event.reason}`)
-      notify(`PC에서 받기 실패: ${event.reason}`)
-      markUnseen()
+      failed(event.reason)
     }
   }
 
