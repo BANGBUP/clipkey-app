@@ -112,8 +112,15 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
   const report = (error) => notify(`전송 실패: ${errorText(error)}`)
 
   // Every key, 한/영 included, goes through the sender chain so taps arrive in order.
+  let inFlight = 0 // taps sent but not yet taken by the device
   function send(item) {
-    sender.sendOps([{ type: OP.TAP, mod: item.mod, key: item.key }]).catch(report)
+    inFlight += 1
+    sender
+      .sendOps([{ type: OP.TAP, mod: item.mod, key: item.key }])
+      .catch(report)
+      .finally(() => {
+        inFlight -= 1
+      })
   }
 
   root.addEventListener('click', (event) => {
@@ -151,6 +158,9 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
 
   document.addEventListener('keydown', (event) => {
     if (!listening(event)) return
+    // A held key repeats faster than taps reach the PC: send the next repeat only once the
+    // last tap is through, so typing stops when the key is let go instead of piling up.
+    if (event.repeat && inFlight > 0) return event.preventDefault()
     const action = physical.down(event)
     if (!action) return
     event.preventDefault() // Tab, Space, Backspace ... act on the PC, not on this page
