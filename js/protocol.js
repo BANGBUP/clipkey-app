@@ -185,5 +185,11 @@ export function parseStatus(view) {
     awakeFlags: view.byteLength >= 20 ? view.getUint8(19) : 0,
     btPcs: view.byteLength >= 21 ? view.getUint8(20) : null, // firmware 1.0.34+: Bluetooth PCs connected
     awakeSchedule: view.byteLength >= 15 && (view.getUint8(14) & CAPS.AWAKE_SCHEDULE) !== 0, // firmware 1.0.32+
+    keyState: view.byteLength >= 15 && (view.getUint8(14) & CAPS.KEY_STATE) !== 0, // firmware 1.0.39+
   })
+}
+
+/** [0x2B, mod, keys x0..6]: what is held on the phone's keyboard right now. */
+export function encodeKeyState(mod, keys) {
+  return Uint8Array.from([FRAME.KEY_STATE, mod & 0xff, ...keys.slice(0, 6)])
 }

@@ -3,7 +3,7 @@
 
 import { OP, MOD } from './constants.js'
 import { errorText } from './log.js'
-import { encodeToggleIme } from './protocol.js'
+import { encodeToggleIme, encodeKeyState } from './protocol.js'
 import {
   KEYS,
   MODIFIERS,
@@ -16,7 +16,7 @@ import {
   keyItem,
   shortcutItem,
 } from './vkeys.js'
-import { createPhysicalKeys } from './physkeys.js'
+import { createPhysicalKeys, createKeyState, IME_CODES } from './physkeys.js'
 
 const NAV_ROWS = [
   ['esc', 'tab', 'capslock', 'printscreen', 'insert', 'delete'],
@@ -150,6 +150,9 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
   // A physical keyboard on the phone: while this tab is open (and no text box has focus)
   // every key goes to the PC as is.
   const physical = createPhysicalKeys()
+  const held = createKeyState() // newer firmware: press / release go out as they happen
+  const holdMode = () => Boolean(client.status?.keyState)
+  const sendState = (state) => state && sender.sendFrame(encodeKeyState(state.mod, state.keys)).catch(report)
   const panel = root.closest('.panel')
   const listening = (event) => {
     const field = event.target?.closest?.('input, textarea, select, [contenteditable="true"]')
@@ -158,6 +161,11 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
 
   document.addEventListener('keydown', (event) => {
     if (!listening(event)) return
+    if (holdMode() && !IME_CODES.includes(event.code)) {
+      const state = held.down(event)
+      if (state || event.repeat || held.knows(event)) event.preventDefault()
+      return sendState(state)
+    }
     // A held key repeats faster than taps reach the PC: send the next repeat only once the
     // last tap is through, so typing stops when the key is let go instead of piling up.
     if (event.repeat && inFlight > 0) return event.preventDefault()
@@ -174,13 +182,22 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
     }
   })
   document.addEventListener('keyup', (event) => {
+    // A release always goes out, even after leaving the tab, so no key stays held on the PC.
+    if (holdMode() && client.connected && !IME_CODES.includes(event.code)) {
+      const state = held.up(event)
+      if (state) event.preventDefault()
+      return sendState(state)
+    }
     if (!listening(event)) return
     const action = physical.up(event)
     if (!action) return
     event.preventDefault()
     if (action.tap) send(action.tap)
   })
-  window.addEventListener('blur', () => physical.reset())
+  window.addEventListener('blur', () => {
+    physical.reset()
+    if (client.connected) sendState(held.reset())
+  })
 
   return Object.freeze({
     setEnabled(enabled) {
@@ -188,6 +205,7 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
       root.setAttribute('aria-disabled', String(!enabled))
       if (!enabled) {
         physical.reset()
+        held.reset() // the device lets go by itself when the phone link drops
         mods = EMPTY_MODS
         paintModifiers()
       }

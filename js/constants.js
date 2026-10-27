@@ -70,6 +70,7 @@ export const FRAME = Object.freeze({
   SET_PC_KEEP_AWAKE: 0x28, // [0x28, kind 1 wired | 2 BT, addr type, addr x6, on 0|1] per PC
   SET_CLOCK: 0x29, // [0x29, local time u32 LE] seconds since 1970-01-01 00:00 local time
   SET_AWAKE_SCHEDULE: 0x2a, // [0x2A, on, days (bit0 Sun..bit6 Sat), count, (start, end minute u16 LE) x0..4]
+  KEY_STATE: 0x2b, // [0x2B, mod, keys x0..6] keys held on the phone's keyboard now
 })
 
 // Where keystrokes go (status byte 17 reports the link actually in use).
@@ -178,6 +179,7 @@ export const CAPS = Object.freeze({
   TYPING_STOPPED: 1 << 3, // BOOT pressed while typing: the app must stop sending too
   PACING: 1 << 4, // PAUSE / PACE items and a separate iPad·Mac 한/영 wait are understood
   AWAKE_SCHEDULE: 1 << 5, // SET_CLOCK / SET_AWAKE_SCHEDULE are understood
+  KEY_STATE: 1 << 6, // KEY_STATE is understood: held keys repeat on the PC itself
   REG_WINDOW: 1 << 2, // BOOT was pressed: one phone may register with REGISTER_DEFAULT_CODE (60 s)
 })
 

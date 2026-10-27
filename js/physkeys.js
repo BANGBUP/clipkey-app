@@ -85,3 +85,55 @@ export function createPhysicalKeys() {
 
   return Object.freeze({ down, up, reset })
 }
+
+const MAX_KEYS = 6 // a boot keyboard report holds six keys
+
+/**
+ * Held-key state for firmware that takes it (CAPS.KEY_STATE): every press / release gives the
+ * new { mod, keys } to send, or null when nothing changed (repeats, a 7th key, unknown keys).
+ */
+export function createKeyState() {
+  let mod = 0
+  let keys = []
+  const state = () => ({ mod, keys: [...keys] })
+
+  function down({ code, repeat }) {
+    if (repeat) return null
+    const bit = MODIFIER_BITS[code]
+    if (bit) {
+      if (mod & bit) return null
+      mod |= bit
+      return state()
+    }
+    const key = hidForCode(code)
+    if (!key || keys.includes(key) || keys.length >= MAX_KEYS) return null
+    keys = [...keys, key]
+    return state()
+  }
+
+  function up({ code }) {
+    const bit = MODIFIER_BITS[code]
+    if (bit) {
+      if (!(mod & bit)) return null
+      mod &= ~bit
+      return state()
+    }
+    const key = hidForCode(code)
+    if (!keys.includes(key)) return null
+    keys = keys.filter((k) => k !== key)
+    return state()
+  }
+
+  /** A key this keyboard passes on (so the page should not act on it). */
+  const knows = ({ code }) => Boolean(MODIFIER_BITS[code] || hidForCode(code))
+
+  /** Lets go of everything; the release to send, or null when nothing was held. */
+  function reset() {
+    if (!mod && !keys.length) return null
+    mod = 0
+    keys = []
+    return state()
+  }
+
+  return Object.freeze({ down, up, reset, knows })
+}
