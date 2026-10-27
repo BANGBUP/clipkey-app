@@ -152,7 +152,22 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
   const physical = createPhysicalKeys()
   const held = createKeyState() // newer firmware: press / release go out as they happen
   const holdMode = () => Boolean(client.status?.keyState)
-  const sendState = (state) => state && sender.sendFrame(encodeKeyState(state.mod, state.keys)).catch(report)
+  // Written without response: waiting for each answer (one or two link intervals) made fast
+  // rolling typing fall behind. Order is kept by the link; every frame carries the whole state,
+  // and it goes once more after a pause in case one got lost (the same state twice is harmless).
+  const RESEND_MS = 300
+  let resendTimer = null
+  const writeState = (state) => {
+    const frame = encodeKeyState(state.mod, state.keys)
+    const write = client.canStream ? client.sendNoResponse(frame) : sender.sendFrame(frame)
+    return write.catch(report)
+  }
+  const sendState = (state) => {
+    if (!state) return undefined
+    clearTimeout(resendTimer)
+    resendTimer = setTimeout(() => client.connected && writeState(state), RESEND_MS)
+    return writeState(state)
+  }
   const panel = root.closest('.panel')
   const listening = (event) => {
     const field = event.target?.closest?.('input, textarea, select, [contenteditable="true"]')
