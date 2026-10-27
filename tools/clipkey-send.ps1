@@ -5,8 +5,7 @@
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1                 # 클립보드 보내기
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -Text "안녕"    # 직접 입력한 텍스트
-  powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -DelayMs 60     # 깨지면 더 천천히
-  powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -DelayMs 20     # 더 빠르게(잘 되는지 확인)
+  powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -DelayMs 20     # 깨지면 더 천천히
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -DryRun         # 키를 누르지 않고 신호 순서만 출력
 
 .NOTES
@@ -21,18 +20,34 @@
 #>
 param(
     [string]$Text,
-    [ValidateRange(5, 1000)][int]$DelayMs = 40,
+    [ValidateRange(5, 1000)][int]$DelayMs = 5,
     [switch]$NoCompress,
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
 $MaxBytes = 4096
 
+# 신호 보내기는 C#으로: PowerShell로 키를 누르면 신호 한 번에 약 11 ms가 더 걸렸습니다.
 Add-Type -Namespace ClipKey -Name LedKeys -MemberDefinition @'
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);
 [DllImport("user32.dll")] public static extern short GetKeyState(int vk);
 [DllImport("winmm.dll")] public static extern uint timeBeginPeriod(uint ms);
 [DllImport("winmm.dll")] public static extern uint timeEndPeriod(uint ms);
+public static bool Num, Caps, Scroll; // 지금 잠금 상태(직접 기억: 빠르게 바꾸면 GetKeyState가 늦음)
+static void Flip(byte vk, byte scan, uint ext) {
+    keybd_event(vk, scan, ext, System.UIntPtr.Zero);
+    keybd_event(vk, scan, ext | 2, System.UIntPtr.Zero);
+}
+// 2비트 신호 count개: 데이터(넘락·캡스락)를 먼저 맞추고 박자(스크롤락)를 뒤집은 뒤 delayMs 쉼
+public static void SendSymbols(int[] symbols, int start, int count, int delayMs) {
+    for (int i = start; i < start + count; i++) {
+        bool n = (symbols[i] & 1) != 0, c = (symbols[i] & 2) != 0;
+        if (n != Num) { Flip(0x90, 0x45, 1); Num = n; }
+        if (c != Caps) { Flip(0x14, 0x3A, 0); Caps = c; }
+        Flip(0x91, 0x46, 0); Scroll = !Scroll;
+        System.Threading.Thread.Sleep(delayMs);
+    }
+}
 '@
 
 $KEYUP = 0x2
@@ -59,14 +74,12 @@ function Set-Key($key, [bool]$on) {
     if ($key.State -ne $on) { Switch-Key $key }
 }
 
-# 2비트 하나: 데이터(넘락·캡스락)를 먼저 맞추고 박자(스크롤락)를 뒤집습니다.
-$DrySymbols = New-Object System.Collections.Generic.List[int]
-function Send-Symbol([int]$symbol) {
-    if ($DryRun) { $DrySymbols.Add($symbol); return }
-    Set-Key $Num (($symbol -band 1) -ne 0)
-    Set-Key $Caps (($symbol -band 2) -ne 0)
-    Switch-Key $Scroll
-    Start-Sleep -Milliseconds $DelayMs
+# 보낼 2비트 신호 전체: 시작 신호, 그다음 바이트마다 4개(낮은 비트부터)
+function Get-Symbols([int[]]$sync, [byte[]]$frame) {
+    $list = New-Object System.Collections.Generic.List[int]
+    foreach ($symbol in $sync) { $list.Add($symbol) }
+    foreach ($b in $frame) { for ($i = 0; $i -lt 4; $i++) { $list.Add(($b -shr (2 * $i)) -band 3) } }
+    , $list.ToArray()
 }
 
 # 분·초로: 237 -> "3분 57초"
@@ -124,8 +137,8 @@ $length = [byte[]]@(($payload.Length -band 0xFF), ($payload.Length -shr 8))
 $crc = Get-Crc16 ($length + $payload)
 $frame = $length + $payload + [byte[]]@(($crc -band 0xFF), ($crc -shr 8))
 $sync = @(3, 0, 3, 0, 1, 2, 1, 2)
-$symbolCount = $sync.Count + $frame.Length * 4
-$seconds = $symbolCount * ($DelayMs + 3) / 1000
+$symbols = Get-Symbols $sync $frame
+$seconds = $symbols.Length * ($DelayMs + 1) / 1000
 
 $cut = 40
 if ($Text.Length -gt $cut -and [char]::IsHighSurrogate($Text[$cut - 1])) { $cut-- } # 이모지 반쪽 방지
@@ -134,9 +147,7 @@ Write-Host ("보낼 내용: {0}" -f $preview) -ForegroundColor Green
 $size = if ($compressed) { "{0}바이트, 압축하면 {1}바이트" -f $utf8.Length, $payload.Length } else { "{0}바이트" -f $payload.Length }
 Write-Host ("{0}자 ({1}), 예상 약 {2}. 전송 중에는 키보드를 쓰지 마세요. (멈추기: Ctrl+C)" -f $charCount, $size, (Format-Duration $seconds)) -ForegroundColor Yellow
 if ($DryRun) {
-    foreach ($symbol in $sync) { Send-Symbol $symbol }
-    foreach ($b in $frame) { for ($i = 0; $i -lt 4; $i++) { Send-Symbol (($b -shr (2 * $i)) -band 3) } }
-    Write-Output ($DrySymbols -join '')
+    Write-Output ($symbols -join '')
     exit 0
 }
 Start-Sleep -Seconds 1
@@ -162,24 +173,27 @@ foreach ($key in $AllKeys) {
     }
 }
 
-$sent = 0
+$done = 0
+$step = 256 # 신호 256개(64바이트)마다 진행 표시
 $clock = [Diagnostics.Stopwatch]::StartNew()
+[ClipKey.LedKeys]::Num = $Num.State
+[ClipKey.LedKeys]::Caps = $Caps.State
+[ClipKey.LedKeys]::Scroll = $Scroll.State
 try {
-    foreach ($symbol in $sync) { Send-Symbol $symbol }
-    foreach ($b in $frame) {
-        for ($i = 0; $i -lt 4; $i++) {
-            Send-Symbol (($b -shr (2 * $i)) -band 3)
-        }
-        $sent++
-        if ($sent % 16 -eq 0) {
-            Write-Progress -Activity 'ClipKey로 보내는 중' -Status ("{0}/{1}바이트" -f $sent, $frame.Length) -PercentComplete (100 * $sent / $frame.Length)
-        }
+    while ($done -lt $symbols.Length) {
+        $count = [math]::Min($step, $symbols.Length - $done)
+        [ClipKey.LedKeys]::SendSymbols($symbols, $done, $count, $DelayMs)
+        $done += $count
+        Write-Progress -Activity 'ClipKey로 보내는 중' -Status ("{0}/{1}바이트" -f [int]($done / 4), $frame.Length) -PercentComplete (100 * $done / $symbols.Length)
     }
     Write-Progress -Activity 'ClipKey로 보내는 중' -Completed
     Write-Host ("보냈습니다: {0}자, {1}. 폰 앱의 받기 탭을 확인하세요." -f $charCount, (Format-Duration $clock.Elapsed.TotalSeconds)) -ForegroundColor Green
 }
 finally {
     # 끝나거나 중간에 멈춰도 잠금 키를 원래 상태로 되돌립니다.
+    $Num.State = [ClipKey.LedKeys]::Num
+    $Caps.State = [ClipKey.LedKeys]::Caps
+    $Scroll.State = [ClipKey.LedKeys]::Scroll
     Start-Sleep -Milliseconds $DelayMs
     foreach ($key in $AllKeys) { Set-Key $key $key.Original }
     Start-Sleep -Milliseconds 100
@@ -187,7 +201,7 @@ finally {
         if ((Get-Toggled $key) -ne $key.Original) { Switch-Key $key } # 기억한 상태와 어긋났으면 실제 상태 기준으로 복원
     }
     [void][ClipKey.LedKeys]::timeEndPeriod(1)
-    if ($sent -lt $frame.Length) {
+    if ($done -lt $symbols.Length) {
         Write-Host '전송이 중간에 멈췄습니다. 기기는 2초 뒤 받던 내용을 버립니다.' -ForegroundColor Red
     }
 }
