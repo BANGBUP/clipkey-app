@@ -6,6 +6,7 @@
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1                 # 클립보드 보내기
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -Text "안녕"    # 직접 입력한 텍스트
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -DelayMs 60     # 깨지면 더 천천히
+  powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -DelayMs 20     # 더 빠르게(잘 되는지 확인)
   powershell -ExecutionPolicy Bypass -File clipkey-send.ps1 -DryRun         # 키를 누르지 않고 신호 순서만 출력
 
 .NOTES
@@ -15,11 +16,13 @@
   - 1바이트 = 2비트 4개(낮은 비트부터)
   - 묶음 = 시작 신호 3,0,3,0,1,2,1,2 | 길이(2바이트) | 내용 | 확인값 CRC-16(2바이트)
   - 확인값: CRC-16/CCITT(다항식 0x1021, 초기값 0xFFFF), 길이+내용에 대해 계산
+  - 내용: UTF-8 텍스트, 또는 압축이 더 짧으면 0x00 + deflate(raw) 압축본(앱이 풀어서 표시)
   전송하는 동안 PC 키보드를 쓰지 마세요(캡스락이 계속 바뀜). 끝나면 잠금 키를 원래대로 되돌립니다.
 #>
 param(
     [string]$Text,
-    [ValidateRange(10, 1000)][int]$DelayMs = 40,
+    [ValidateRange(5, 1000)][int]$DelayMs = 40,
+    [switch]$NoCompress,
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
@@ -28,6 +31,8 @@ $MaxBytes = 4096
 Add-Type -Namespace ClipKey -Name LedKeys -MemberDefinition @'
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);
 [DllImport("user32.dll")] public static extern short GetKeyState(int vk);
+[DllImport("winmm.dll")] public static extern uint timeBeginPeriod(uint ms);
+[DllImport("winmm.dll")] public static extern uint timeEndPeriod(uint ms);
 '@
 
 $KEYUP = 0x2
@@ -64,6 +69,22 @@ function Send-Symbol([int]$symbol) {
     Start-Sleep -Milliseconds $DelayMs
 }
 
+# 분·초로: 237 -> "3분 57초"
+function Format-Duration([double]$seconds) {
+    $s = [int][math]::Ceiling($seconds)
+    if ($s -lt 60) { return "{0}초" -f $s }
+    return "{0}분 {1}초" -f [int][math]::Floor($s / 60), ($s % 60)
+}
+
+# deflate(raw) 압축. 앱은 첫 바이트 0x00을 보고 압축본임을 압니다(텍스트는 0x00으로 시작하지 않음).
+function Compress-Bytes([byte[]]$data) {
+    $out = New-Object System.IO.MemoryStream
+    $deflate = New-Object System.IO.Compression.DeflateStream($out, [System.IO.Compression.CompressionLevel]::Optimal)
+    $deflate.Write($data, 0, $data.Length)
+    $deflate.Close()
+    [byte[]](@([byte]0) + $out.ToArray())
+}
+
 function Get-Crc16([byte[]]$data) {
     $crc = 0xFFFF
     foreach ($b in $data) {
@@ -86,9 +107,16 @@ if ([string]::IsNullOrEmpty($Text)) {
     Write-Host "보낼 텍스트가 없습니다: $why." -ForegroundColor Red
     exit 1
 }
-$payload = [Text.Encoding]::UTF8.GetBytes($Text)
+$utf8 = [Text.Encoding]::UTF8.GetBytes($Text)
+$payload = $utf8
+$compressed = $false
+if (-not $NoCompress -and $utf8.Length -gt 0 -and $utf8[0] -ne 0) {
+    $packed = Compress-Bytes $utf8
+    if ($packed.Length -lt $utf8.Length) { $payload = $packed; $compressed = $true }
+}
+$charCount = [Globalization.StringInfo]::new($Text).LengthInTextElements
 if ($payload.Length -gt $MaxBytes) {
-    Write-Host ("너무 깁니다: {0}바이트 (최대 {1}바이트, 한글 약 {2}자)" -f $payload.Length, $MaxBytes, [int]($MaxBytes / 3)) -ForegroundColor Red
+    Write-Host ("너무 깁니다: {0}자, 보낼 크기 {1}바이트 (최대 {2}바이트)" -f $charCount, $payload.Length, $MaxBytes) -ForegroundColor Red
     exit 1
 }
 
@@ -97,13 +125,14 @@ $crc = Get-Crc16 ($length + $payload)
 $frame = $length + $payload + [byte[]]@(($crc -band 0xFF), ($crc -shr 8))
 $sync = @(3, 0, 3, 0, 1, 2, 1, 2)
 $symbolCount = $sync.Count + $frame.Length * 4
-$seconds = [math]::Ceiling($symbolCount * ($DelayMs + 5) / 1000)
+$seconds = $symbolCount * ($DelayMs + 3) / 1000
 
 $cut = 40
 if ($Text.Length -gt $cut -and [char]::IsHighSurrogate($Text[$cut - 1])) { $cut-- } # 이모지 반쪽 방지
-$preview = if ($Text.Length -gt $cut) { $Text.Substring(0, $cut) + '…' } else { $Text }
+$preview = if ($Text.Length -gt $cut) { $Text.Substring(0, $cut) + '...' } else { $Text }
 Write-Host ("보낼 내용: {0}" -f $preview) -ForegroundColor Green
-Write-Host ("{0}바이트, 예상 약 {1}초. 전송 중에는 키보드를 쓰지 마세요. (멈추기: Ctrl+C)" -f $payload.Length, $seconds) -ForegroundColor Yellow
+$size = if ($compressed) { "{0}바이트, 압축하면 {1}바이트" -f $utf8.Length, $payload.Length } else { "{0}바이트" -f $payload.Length }
+Write-Host ("{0}자 ({1}), 예상 약 {2}. 전송 중에는 키보드를 쓰지 마세요. (멈추기: Ctrl+C)" -f $charCount, $size, (Format-Duration $seconds)) -ForegroundColor Yellow
 if ($DryRun) {
     foreach ($symbol in $sync) { Send-Symbol $symbol }
     foreach ($b in $frame) { for ($i = 0; $i -lt 4; $i++) { Send-Symbol (($b -shr (2 * $i)) -band 3) } }
@@ -111,6 +140,7 @@ if ($DryRun) {
     exit 0
 }
 Start-Sleep -Seconds 1
+[void][ClipKey.LedKeys]::timeBeginPeriod(1) # 1 ms 단위로 쉬기(기본은 약 15.6 ms 단위라 느려짐)
 
 foreach ($key in $AllKeys) {
     $key.State = Get-Toggled $key
@@ -126,13 +156,14 @@ foreach ($key in $AllKeys) {
         if ((Get-Toggled $key) -ne $key.State) {
             Set-Key $key $key.Original
             Write-Host '잠금 키가 키 입력으로 켜고 꺼지지 않습니다.' -ForegroundColor Red
-            Write-Host '설정 → 시간 및 언어 → 입력 → 고급 키보드 설정 → 입력 언어 핫키에서 "Caps Lock 해제"를 "Caps Lock 키"로 바꾸세요.' -ForegroundColor Red
+            Write-Host '설정 > 시간 및 언어 > 입력 > 고급 키보드 설정 > 입력 언어 핫키에서 "Caps Lock 해제"를 "Caps Lock 키"로 바꾸세요.' -ForegroundColor Red
             exit 1
         }
     }
 }
 
 $sent = 0
+$clock = [Diagnostics.Stopwatch]::StartNew()
 try {
     foreach ($symbol in $sync) { Send-Symbol $symbol }
     foreach ($b in $frame) {
@@ -145,7 +176,7 @@ try {
         }
     }
     Write-Progress -Activity 'ClipKey로 보내는 중' -Completed
-    Write-Host '보냈습니다. 폰 앱의 받기 탭을 확인하세요.' -ForegroundColor Green
+    Write-Host ("보냈습니다: {0}자, {1}. 폰 앱의 받기 탭을 확인하세요." -f $charCount, (Format-Duration $clock.Elapsed.TotalSeconds)) -ForegroundColor Green
 }
 finally {
     # 끝나거나 중간에 멈춰도 잠금 키를 원래 상태로 되돌립니다.
@@ -155,6 +186,7 @@ finally {
     foreach ($key in $AllKeys) {
         if ((Get-Toggled $key) -ne $key.Original) { Switch-Key $key } # 기억한 상태와 어긋났으면 실제 상태 기준으로 복원
     }
+    [void][ClipKey.LedKeys]::timeEndPeriod(1)
     if ($sent -lt $frame.Length) {
         Write-Host '전송이 중간에 멈췄습니다. 기기는 2초 뒤 받던 내용을 버립니다.' -ForegroundColor Red
     }

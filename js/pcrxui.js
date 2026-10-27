@@ -2,7 +2,7 @@
 // memory only (they may be passwords); just the auto-copy preference is saved.
 
 import { SECURE_MSG } from './constants.js'
-import { EMPTY_RX, reducePcRx } from './pcrx.js'
+import { EMPTY_RX, reducePcRx, inflateText, charCount } from './pcrx.js'
 
 const MAX_ITEMS = 10
 const PREF_KEY = 'clipkey.pcrx.v1'
@@ -68,7 +68,8 @@ export function setupPcReceive({ notify, toSendTab }) {
     box.className = 'rx-item'
     const head = document.createElement('div')
     head.className = 'hint'
-    head.textContent = `${timeLabel(item.at)} · ${item.size}바이트`
+    const packed = item.compressed ? ` (압축 ${item.size}바이트)` : ` · ${item.size}바이트`
+    head.textContent = `${timeLabel(item.at)} · ${charCount(item.text)}자${packed}`
     const text = document.createElement('pre')
     text.className = 'rx-text'
     text.textContent = item.text
@@ -97,9 +98,9 @@ export function setupPcReceive({ notify, toSendTab }) {
     $('pcRxEmpty').classList.toggle('hidden', items.length > 0)
   }
 
-  async function received(text, size) {
-    setItems([{ id: nextId++, text, size, at: new Date() }, ...items].slice(0, MAX_ITEMS))
-    setStatus(`완료: ${size}바이트를 받았습니다`)
+  async function received(text, size, compressed = false) {
+    setItems([{ id: nextId++, text, size, compressed, at: new Date() }, ...items].slice(0, MAX_ITEMS))
+    setStatus(`완료: ${charCount(text)}자를 받았습니다`)
     markUnseen()
     if (autoCopy.checked) await copy(text, 'PC에서 텍스트를 받아 클립보드에 복사했습니다')
     else notify('PC에서 텍스트를 받았습니다')
@@ -112,11 +113,19 @@ export function setupPcReceive({ notify, toSendTab }) {
     const event = result.event
     if (!event) return
     if (event.type === 'progress') {
-      setStatus(`받는 중 ${event.received}/${event.total} 바이트`, event)
+      const percent = Math.floor((100 * event.received) / Math.max(event.total, 1))
+      setStatus(`받는 중 ${percent}% (${event.received}/${event.total}바이트)`, event)
       if (event.starting) {
         notify('PC에서 텍스트를 받는 중…')
         markUnseen()
       }
+    } else if (event.type === 'done' && event.compressed) {
+      inflateText(event.compressed)
+        .then((text) => received(text, event.size, true))
+        .catch(() => {
+          setStatus('실패: 압축을 풀지 못했습니다')
+          notify('PC에서 받기 실패: 압축을 풀지 못했습니다')
+        })
     } else if (event.type === 'done') {
       received(event.text, event.size)
     } else if (event.type === 'failed') {

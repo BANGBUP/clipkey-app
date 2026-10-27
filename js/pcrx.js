@@ -50,8 +50,29 @@ function onDone(rx) {
   const buffer = rx.buffer
   if (!buffer) return { rx, event: null } // nothing collected (e.g. joined after the chunks)
   if (buffer.broken || buffer.filled !== buffer.total) return fail(rx, '일부가 빠졌습니다')
+  // 0x00 first: the script sent it deflate-compressed (shorter); inflateText() opens it.
+  if (buffer.bytes[0] === 0) {
+    return { rx: { buffer: null }, event: { type: 'done', compressed: buffer.bytes.subarray(1), size: buffer.total } }
+  }
   const text = new TextDecoder('utf-8', { fatal: false }).decode(buffer.bytes)
   return { rx: { buffer: null }, event: { type: 'done', text, size: buffer.total } }
+}
+
+/** Opens a compressed text (raw deflate of UTF-8). */
+export async function inflateText(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  const plain = new Uint8Array(await new Response(stream).arrayBuffer())
+  return new TextDecoder('utf-8', { fatal: false }).decode(plain)
+}
+
+/** Characters as a person counts them (an emoji or a 한글 syllable is one). */
+export function charCount(text) {
+  if (typeof Intl?.Segmenter === 'function') {
+    let n = 0
+    for (const _ of new Intl.Segmenter('ko', { granularity: 'grapheme' }).segment(text)) n += 1
+    return n
+  }
+  return [...text].length
 }
 
 /**
