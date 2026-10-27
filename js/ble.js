@@ -437,13 +437,24 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
    * Like send(), but as a write without response: resolves once the frame is queued, so the
    * next one can follow right away (OTA streaming). Only when canStream.
    */
+  let sealMs = 0 // encryption time inside sendNoResponse, for the OTA log
+
+  /** Encryption time spent in sendNoResponse since the last call. */
+  function takeSealMs() {
+    const ms = sealMs
+    sealMs = 0
+    return ms
+  }
+
   async function sendNoResponse(frame) {
     if (!chars || !session) throw new Error('연결되어 있지 않습니다')
     return serialize(async () => {
       if (!chars || !session) throw new Error('연결이 끊겼습니다')
       const counter = session.counter
       session = { ...session, counter: counter + 1 }
+      const sealStarted = Date.now()
       const sealed = await sealFrame(session.key, counter, frame)
+      sealMs += Date.now() - sealStarted
       return chars.cmd.writeValueWithoutResponse(sealed)
     })
   }
@@ -490,6 +501,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     disconnect,
     send,
     sendNoResponse,
+    takeSealMs,
     sendKeys,
     readStatus,
     get connected() {

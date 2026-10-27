@@ -135,6 +135,7 @@ export function setupFirmwareUi({ client, notify }) {
   // (all of it, or 0 when this link cannot stream and the slow path must start over).
   async function streamData(image) {
     const total = image.length
+    client.takeSealMs?.() // count only this upload's encryption
     stream = createOtaStream({
       total,
       chunkSize: OTA_CHUNK,
@@ -147,8 +148,12 @@ export function setupFirmwareUi({ client, notify }) {
     })
     try {
       await stream.run()
-      const { silences, resends } = stream.stats()
-      log(`streamed (${silences} silent waits, ${resends} resends)`)
+      const s = stream.stats()
+      const secs = (ms) => (ms / 1000).toFixed(1)
+      const sealMs = client.takeSealMs?.() ?? 0
+      log(`streamed in ${secs(s.totalMs)} s: writes ${secs(s.writeMs)} s (sealing ${secs(sealMs)} s, ` +
+        `longest ${s.writeMaxMs} ms), waited for the device ${s.windowWaits} times (${secs(s.windowWaitMs)} s), ` +
+        `${s.silences} silent waits, ${s.resends} resends`)
       return total
     } catch (error) {
       if (!(error instanceof StreamUnsupportedError)) throw error

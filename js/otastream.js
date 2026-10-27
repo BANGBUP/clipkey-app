@@ -24,6 +24,11 @@ export function createOtaStream({ total, chunkSize, windowBytes, stallMs, maxSta
   let rewoundAt = 0
   let silences = 0 // waits of stallMs with no note
   let resends = 0 // "resend from" positions acted on
+  const startedAt = Date.now()
+  let writeMs = 0 // time spent handing chunks to the phone's Bluetooth
+  let writeMaxMs = 0
+  let windowWaits = 0 // times the window was full and the device's note was awaited
+  let windowWaitMs = 0
 
   const notify = () => {
     const w = wake
@@ -83,15 +88,23 @@ export function createOtaStream({ total, chunkSize, windowBytes, stallMs, maxSta
         const length = Math.min(chunkSize, total - next)
         const offset = next
         next += length
+        const sentAt = Date.now()
         try {
           await sendChunk(offset, length)
         } catch (error) {
           if (offset === 0 && confirmed === 0) throw new StreamUnsupportedError(error?.message)
           throw error
         }
+        const took = Date.now() - sentAt
+        writeMs += took
+        writeMaxMs = Math.max(writeMaxMs, took)
         continue
       }
-      if (await waitForNote(stallMs)) continue
+      const waitedAt = Date.now()
+      const noted = await waitForNote(stallMs)
+      windowWaits += 1
+      windowWaitMs += Date.now() - waitedAt
+      if (noted) continue
       // Silence: the progress note (or the chunks) got lost. Resend from the last
       // confirmed point; if the device is further along it answers with "resend from".
       silences += 1
@@ -100,5 +113,9 @@ export function createOtaStream({ total, chunkSize, windowBytes, stallMs, maxSta
     if (failed) throw failed
   }
 
-  return Object.freeze({ run, onNote, stats: () => ({ silences, resends }) })
+  const stats = () => ({
+    silences, resends, writeMs, writeMaxMs, windowWaits, windowWaitMs, totalMs: Date.now() - startedAt,
+  })
+
+  return Object.freeze({ run, onNote, stats })
 }
