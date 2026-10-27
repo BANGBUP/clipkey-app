@@ -305,8 +305,11 @@ details.phrases[open] > summary { margin-bottom: 4px; }
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
 }
 .rx-item { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
-.rx-text { margin: 0; max-height: 9em; overflow: auto; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 14px; }
-.rx-item.expanded .rx-text { max-height: none; }
+.rx-text {
+  margin: 0; font: inherit; font-size: 14px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* one line until 펼치기 */
+}
+.rx-item.expanded .rx-text { white-space: pre-wrap; word-break: break-word; overflow: visible; }
 .rx-item .row { flex-wrap: wrap; }
 
 .app-version { font-size: 12px; font-weight: 400; color: var(--muted); }

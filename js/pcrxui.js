@@ -73,7 +73,6 @@ export function setupPcReceive({ notify, toSendTab }) {
     const text = document.createElement('pre')
     text.className = 'rx-text'
     text.textContent = item.text
-    text.addEventListener('click', () => box.classList.toggle('expanded'))
     const actions = document.createElement('div')
     actions.className = 'row'
     const action = (label, run, extra = '') => {
@@ -83,7 +82,15 @@ export function setupPcReceive({ notify, toSendTab }) {
       b.addEventListener('click', run)
       return b
     }
+    const toggle = action('펼치기', () => {
+      const open = box.classList.toggle('expanded')
+      toggle.textContent = open ? '접기' : '펼치기'
+      toggle.setAttribute('aria-expanded', String(open))
+    })
+    toggle.setAttribute('aria-expanded', 'false')
+    text.addEventListener('click', () => toggle.click())
     actions.append(
+      toggle,
       action('복사', () => copy(item.text)),
       action('보내기 탭으로', () => toSendTab(item.text)),
       action('삭제', () => setItems(items.filter((i) => i.id !== item.id)), 'danger'),
