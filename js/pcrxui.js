@@ -59,6 +59,14 @@ export function setupPcReceive({ notify, toSendTab }) {
     }
   }
 
+  // "수신 N%" next to the 유선 / 블투 chips while a PC sends; a tap opens the 받기 tab.
+  const chip = document.querySelector('.chip[data-chip="rx"]')
+  chip.addEventListener('click', () => tab.click())
+  function setChip(percent) {
+    chip.classList.toggle('hidden', percent === null)
+    if (percent !== null) chip.textContent = `수신 ${percent}%`
+  }
+
   const markUnseen = () => $('receiveDot').classList.toggle('hidden', tab.classList.contains('active'))
   tab.addEventListener('click', () => $('receiveDot').classList.add('hidden'))
 
@@ -156,13 +164,12 @@ export function setupPcReceive({ notify, toSendTab }) {
     rx = result.rx
     const event = result.event
     if (!event) return
+    if (event.type !== 'progress') setChip(null)
     if (event.type === 'progress') {
       const percent = Math.floor((100 * event.received) / Math.max(event.total, 1))
       setStatus(`받는 중 ${percent}% (${event.received}/${event.total}바이트)`, event)
-      if (event.starting) {
-        notify('PC에서 텍스트를 받는 중…')
-        if (!tab.classList.contains('active')) tab.click() // the PC side started it: show it here
-      }
+      setChip(percent)
+      if (event.starting) markUnseen()
     } else if (event.type === 'done' && event.compressed) {
       inflateText(event.compressed)
         .then((text) => received(text, event.size, true))
@@ -185,6 +192,7 @@ export function setupPcReceive({ notify, toSendTab }) {
     /** The link dropped: a half-received text is gone (the list stays). */
     reset() {
       rx = { ...rx, buffer: null }
+      setChip(null)
       if ($('pcRxStatus').textContent.startsWith('받는 중')) setStatus('대기 중 (연결이 끊겨 받던 텍스트는 버렸습니다)')
     },
   })
