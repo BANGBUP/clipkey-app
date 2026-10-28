@@ -128,9 +128,9 @@ function Start-Send([string]$extraArgs) {
     if (-not (Test-Path $sendScript)) { Show-Note "clipkey-send.ps1이 없습니다: $sendScript" 'Error'; return }
     if ($miSlow.Checked) { $extraArgs += " -DelayMs $SlowDelayMs" }
     # 모든 출력을 글자로(*>&1), 멈춘 오류도 한 줄로
-    $command = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; `$ProgressPreference = 'SilentlyContinue'; " +
+    $command = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; `$ProgressPreference = 'SilentlyContinue'; " +
         "try {{ & '{0}'{1} *>&1 | ForEach-Object {{ `"`$_`" }}; exit `$LASTEXITCODE }} " +
-        "catch {{ `"오류: `$(`$_.Exception.Message)`"; exit 1 }}" -f $sendScript.Replace("'", "''"), $extraArgs
+        "catch {{ `"오류: `$(`$_.Exception.Message)`"; exit 1 }}") -f $sendScript.Replace("'", "''"), $extraArgs
     $info = New-Object Diagnostics.ProcessStartInfo 'powershell.exe'
     $info.Arguments = '-NoProfile -ExecutionPolicy Bypass -EncodedCommand ' + [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $info.UseShellExecute = $false
