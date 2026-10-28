@@ -176,7 +176,7 @@ $miClip.Add_Click({ Start-Send '' })
 $tray.Add_MouseDoubleClick({ param($s, $e) if ($e.Button -eq 'Left') { Start-Send '' } })
 $miFile.Add_Click({
     $dialog = New-Object Windows.Forms.OpenFileDialog
-    $dialog.Title = 'ClipKey로 보낼 파일 (ESP32-S3: 압축해서 32KB까지)'
+    $dialog.Title = 'ClipKey로 보낼 파일 (크면 조각으로 나눠 보냄, 32KB에 약 13분)'
     if ($dialog.ShowDialog() -eq 'OK') { Start-Send (" -Path '{0}'" -f $dialog.FileName.Replace("'", "''")) }
 })
 # 앱이 "빠진 조각 3,5"라고 하면: 마지막에 보낸 것에서 그 조각만 (클립보드는 내용이 그대로여야 함)
