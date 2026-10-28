@@ -44,7 +44,7 @@ if ($Install) {
 $mutex = New-Object System.Threading.Mutex($false, 'ClipKeyTray')
 if (-not $mutex.WaitOne(0)) { exit 0 }
 
-Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing, Microsoft.VisualBasic
 Add-Type -Namespace ClipKeyTray -Name Keys -MemberDefinition @'
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);
 '@
@@ -93,13 +93,14 @@ $menu = New-Object Windows.Forms.ContextMenuStrip
 $miClip = New-Object Windows.Forms.ToolStripMenuItem '클립보드 보내기'
 $miClip.Font = New-Object Drawing.Font($miClip.Font, [Drawing.FontStyle]::Bold)
 $miFile = New-Object Windows.Forms.ToolStripMenuItem '파일 보내기...'
+$miParts = New-Object Windows.Forms.ToolStripMenuItem '빠진 조각 다시 보내기...'
 $miStop = New-Object Windows.Forms.ToolStripMenuItem '보내기 멈추기'
 $miStop.Enabled = $false
 $miSlow = New-Object Windows.Forms.ToolStripMenuItem ('천천히 보내기 (깨질 때, {0}ms)' -f $SlowDelayMs)
 $miSlow.CheckOnClick = $true
 $miLog = New-Object Windows.Forms.ToolStripMenuItem '마지막 기록 보기'
 $miQuit = New-Object Windows.Forms.ToolStripMenuItem '끝내기'
-[void]$menu.Items.AddRange(@($miClip, $miFile, $miStop, (New-Object Windows.Forms.ToolStripSeparator), $miSlow, $miLog, $miQuit))
+[void]$menu.Items.AddRange(@($miClip, $miFile, $miParts, $miStop, (New-Object Windows.Forms.ToolStripSeparator), $miSlow, $miLog, $miQuit))
 $tray.ContextMenuStrip = $menu
 $tray.Visible = $true
 
@@ -107,6 +108,7 @@ $timer = New-Object Windows.Forms.Timer
 $timer.Interval = 300
 $script:proc = $null
 $script:stopped = $false
+$script:lastArgs = $null # 마지막으로 보낸 것(조각 다시 보내기용)
 
 function Show-Note([string]$text, [string]$kind = 'Info') {
     if (-not $text) { $text = '(내용 없음)' }
@@ -119,6 +121,7 @@ function Set-Busy([bool]$busy) {
     $tray.Text = if ($busy) { 'ClipKey: 보내는 중 (키보드를 쓰지 마세요)' } else { 'ClipKey 보내기 (두 번 클릭: 클립보드)' }
     $miClip.Enabled = -not $busy
     $miFile.Enabled = -not $busy
+    $miParts.Enabled = -not $busy
     $miStop.Enabled = $busy
 }
 
@@ -126,6 +129,7 @@ function Set-Busy([bool]$busy) {
 function Start-Send([string]$extraArgs) {
     if ($script:proc) { Show-Note '이미 보내는 중입니다.' 'Warning'; return }
     if (-not (Test-Path $sendScript)) { Show-Note "clipkey-send.ps1이 없습니다: $sendScript" 'Error'; return }
+    if ($extraArgs -notmatch '-Parts') { $script:lastArgs = $extraArgs }
     if ($miSlow.Checked) { $extraArgs += " -DelayMs $SlowDelayMs" }
     # 모든 출력을 글자로(*>&1), 멈춘 오류도 한 줄로
     $command = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; `$ProgressPreference = 'SilentlyContinue'; " +
@@ -174,6 +178,14 @@ $miFile.Add_Click({
     $dialog = New-Object Windows.Forms.OpenFileDialog
     $dialog.Title = 'ClipKey로 보낼 파일 (ESP32-S3: 압축해서 32KB까지)'
     if ($dialog.ShowDialog() -eq 'OK') { Start-Send (" -Path '{0}'" -f $dialog.FileName.Replace("'", "''")) }
+})
+# 앱이 "빠진 조각 3,5"라고 하면: 마지막에 보낸 것에서 그 조각만 (클립보드는 내용이 그대로여야 함)
+$miParts.Add_Click({
+    if ($null -eq $script:lastArgs) { Show-Note '먼저 보낸 것이 없습니다.' 'Warning'; return }
+    $what = if ($script:lastArgs) { '마지막에 보낸 파일' } else { '클립보드(보낼 때와 내용이 같아야 함)' }
+    $numbers = [Microsoft.VisualBasic.Interaction]::InputBox("$what 에서 다시 보낼 조각 번호 (예: 3,5)", 'ClipKey 조각 다시 보내기', '')
+    if ($numbers -match '^[\d,\s]+$') { Start-Send ("{0} -Parts '{1}'" -f $script:lastArgs, $numbers.Trim()) }
+    elseif ($numbers) { Show-Note '숫자와 쉼표만 넣으세요. 예: 3,5' 'Warning' }
 })
 $miStop.Add_Click({
     if ($script:proc -and -not $script:proc.HasExited) {

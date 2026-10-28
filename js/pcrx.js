@@ -16,7 +16,12 @@ export const PC_TEXT_MAX = 65535 // u16 length; the ClipKey takes 32 KB (ESP32-S
 export const PAYLOAD = Object.freeze({
   DEFLATE_TEXT: 0x00, // [0x00, raw deflate of UTF-8 text]
   FILE: 0x01, // [0x01, flags (bit0 deflate), name length, name UTF-8, data]
+  // One piece of a payload too big for one frame: the pieces' data joined in order is the
+  // payload (0x00 / 0x01 / plain text). The id is the same when the same content is sent again.
+  PART: 0x02, // [0x02, id u16, index u16 (from 0), count u16, data]
 })
+
+const PART_HEADER = 7
 
 const u16 = (bytes, at) => bytes[at] | (bytes[at + 1] << 8)
 
@@ -56,17 +61,58 @@ function onDone(rx) {
   const buffer = rx.buffer
   if (!buffer) return { rx, event: null } // nothing collected (e.g. joined after the chunks)
   if (buffer.broken || buffer.filled !== buffer.total) return fail(rx, '일부가 빠졌습니다')
+  if (buffer.bytes[0] === PAYLOAD.PART) {
+    const part = parsePart(buffer.bytes)
+    if (!part) return fail(rx, '조각 정보가 잘못되었습니다')
+    return { rx: { buffer: null }, event: { type: 'part', ...part } }
+  }
+  return { rx: { buffer: null }, event: payloadEvent(buffer.bytes) }
+}
+
+/**
+ * What a whole payload is: { type: 'done', compressed | text, size } | { type: 'file', ... } |
+ * { type: 'failed', reason }.
+ */
+export function payloadEvent(bytes) {
+  const size = bytes.length
   // 0x00 first: the script sent it deflate-compressed (shorter); inflateText() opens it.
-  if (buffer.bytes[0] === PAYLOAD.DEFLATE_TEXT) {
-    return { rx: { buffer: null }, event: { type: 'done', compressed: buffer.bytes.subarray(1), size: buffer.total } }
+  if (bytes[0] === PAYLOAD.DEFLATE_TEXT) return { type: 'done', compressed: bytes.subarray(1), size }
+  if (bytes[0] === PAYLOAD.FILE) {
+    const file = parseFilePayload(bytes)
+    return file ? { type: 'file', ...file, size } : { type: 'failed', reason: '파일 정보가 잘못되었습니다' }
   }
-  if (buffer.bytes[0] === PAYLOAD.FILE) {
-    const file = parseFilePayload(buffer.bytes)
-    if (!file) return fail(rx, '파일 정보가 잘못되었습니다')
-    return { rx: { buffer: null }, event: { type: 'file', ...file, size: buffer.total } }
+  if (bytes[0] === PAYLOAD.PART) return { type: 'failed', reason: '조각 정보가 잘못되었습니다' }
+  return { type: 'done', text: new TextDecoder('utf-8', { fatal: false }).decode(bytes), size }
+}
+
+/** [0x02, id, index, count, data] -> { id, index, count, data } or null. */
+export function parsePart(bytes) {
+  if (bytes.length <= PART_HEADER) return null
+  const part = { id: u16(bytes, 1), index: u16(bytes, 3), count: u16(bytes, 5), data: bytes.slice(PART_HEADER) }
+  return part.count >= 1 && part.index < part.count ? part : null
+}
+
+/** No pieces collected. */
+export const EMPTY_PARTS = Object.freeze({ id: -1, count: 0, pieces: Object.freeze([]) })
+
+/**
+ * Adds one piece. A different id (or count) starts a new collection. Returns
+ * { parts, have, missing (1-based numbers before the newest piece), payload (when complete) }.
+ */
+export function addPart(parts, { id, index, count, data }) {
+  const same = parts.id === id && parts.count === count
+  const pieces = same ? parts.pieces.slice() : new Array(count).fill(null)
+  pieces[index] = data
+  const next = { id, count, pieces }
+  const have = pieces.filter(Boolean).length
+  if (have === count) {
+    const payload = new Uint8Array(pieces.reduce((n, p) => n + p.length, 0))
+    pieces.reduce((at, p) => (payload.set(p, at), at + p.length), 0)
+    return { parts: EMPTY_PARTS, have, missing: [], payload }
   }
-  const text = new TextDecoder('utf-8', { fatal: false }).decode(buffer.bytes)
-  return { rx: { buffer: null }, event: { type: 'done', text, size: buffer.total } }
+  const newest = pieces.reduce((last, p, i) => (p ? i : last), -1)
+  const missing = pieces.slice(0, newest).flatMap((p, i) => (p ? [] : [i + 1]))
+  return { parts: next, have, missing, payload: null }
 }
 
 /** [0x01, flags, name length, name, data] -> { name, deflated, data } or null. */

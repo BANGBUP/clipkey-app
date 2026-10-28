@@ -2,7 +2,7 @@
 // memory only (they may be passwords); just the auto-copy preference is saved.
 
 import { SECURE_MSG } from './constants.js'
-import { EMPTY_RX, reducePcRx, inflateText, inflateBytes, textOf, charCount } from './pcrx.js'
+import { EMPTY_RX, EMPTY_PARTS, reducePcRx, addPart, payloadEvent, inflateText, inflateBytes, textOf, charCount } from './pcrx.js'
 
 const MAX_ITEMS = 10
 const PREF_KEY = 'clipkey.pcrx.v1'
@@ -42,6 +42,8 @@ export function setupPcReceive({ notify, toSendTab }) {
   const $ = (id) => document.getElementById(id)
   const tab = document.querySelector('.tab[data-tab="receive"]')
   let rx = EMPTY_RX
+  let parts = EMPTY_PARTS // pieces of a split payload, kept until all are in
+  let partsHave = 0
   let items = [] // newest first: { id, text, size, at }
   let nextId = 1
 
@@ -62,9 +64,9 @@ export function setupPcReceive({ notify, toSendTab }) {
   // "수신 N%" next to the 유선 / 블투 chips while a PC sends; a tap opens the 받기 tab.
   const chip = document.querySelector('.chip[data-chip="rx"]')
   chip.addEventListener('click', () => tab.click())
-  function setChip(percent) {
-    chip.classList.toggle('hidden', percent === null)
-    if (percent !== null) chip.textContent = `수신 ${percent}%`
+  function setChip(progress) {
+    chip.classList.toggle('hidden', progress === null)
+    if (progress !== null) chip.textContent = `수신 ${progress}`
   }
 
   const markUnseen = () => $('receiveDot').classList.toggle('hidden', tab.classList.contains('active'))
@@ -167,10 +169,35 @@ export function setupPcReceive({ notify, toSendTab }) {
     if (event.type !== 'progress') setChip(null)
     if (event.type === 'progress') {
       const percent = Math.floor((100 * event.received) / Math.max(event.total, 1))
-      setStatus(`받는 중 ${percent}% (${event.received}/${event.total}바이트)`, event)
-      setChip(percent)
+      const piece = parts.count ? `조각 ${Math.min(partsHave + 1, parts.count)}/${parts.count} ` : ''
+      setStatus(`받는 중 ${piece}${percent}% (${event.received}/${event.total}바이트)`, event)
+      setChip(`${piece}${percent}%`)
       if (event.starting) markUnseen()
-    } else if (event.type === 'done' && event.compressed) {
+    } else if (event.type === 'part') {
+      onPart(event)
+    } else {
+      onPayload(event)
+    }
+  }
+
+  // A payload too big for one frame comes in pieces (clipkey-send.ps1 splits it).
+  function onPart(part) {
+    const result = addPart(parts, part)
+    parts = result.parts
+    partsHave = result.payload ? 0 : result.have
+    if (result.payload) {
+      onPayload(payloadEvent(result.payload))
+      return
+    }
+    const missing = result.missing.length
+      ? `. 빠진 조각 ${result.missing.join(',')}: PC 트레이의 '빠진 조각 다시 보내기' 또는 -Parts ${result.missing.join(',')} 로 다시 보내세요`
+      : ''
+    setStatus(`조각 ${result.have}/${part.count}개 받음${missing}`)
+    markUnseen()
+  }
+
+  function onPayload(event) {
+    if (event.type === 'done' && event.compressed) {
       inflateText(event.compressed)
         .then((text) => received(text, event.size, true))
         .catch(() => failed('압축을 풀지 못했습니다'))
