@@ -161,7 +161,7 @@ export function setupPcReceive({ notify, toSendTab }) {
       setStatus(`받는 중 ${percent}% (${event.received}/${event.total}바이트)`, event)
       if (event.starting) {
         notify('PC에서 텍스트를 받는 중…')
-        markUnseen()
+        if (!tab.classList.contains('active')) tab.click() // the PC side started it: show it here
       }
     } else if (event.type === 'done' && event.compressed) {
       inflateText(event.compressed)
