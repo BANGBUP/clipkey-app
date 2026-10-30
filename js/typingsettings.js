@@ -11,8 +11,6 @@ export const DEFAULT_SETTINGS = Object.freeze({
   toggleKey: 'lang1',
   delay: 15,
   appleDelay: 20,
-  packDelay: 2, // 트레이로 압축 보내기 over USB: only while that runs
-  packBtDelay: 12, // the same over Bluetooth: faster than one report per link event loses keys
   settle: 30,
   appleSettle: 30,
   breathEvery: DEFAULT_PACING.every,
@@ -24,8 +22,6 @@ const inRange = (v, min, max) => Number.isFinite(v) && v >= min && v <= max
 const LIMITS = Object.freeze({
   delay: [2, 40],
   appleDelay: [2, 40],
-  packDelay: [2, 40],
-  packBtDelay: [2, 40],
   settle: [0, 500],
   appleSettle: [0, 500],
   breathEvery: [0, 5000],
@@ -107,7 +103,7 @@ export function wireTypingSettings({ $, get, apply }) {
   select.value = settings.toggleKey
   select.addEventListener('change', () => apply({ toggleKey: select.value }))
 
-  for (const id of ['delay', 'appleDelay', 'packDelay', 'packBtDelay', 'settle', 'appleSettle']) {
+  for (const id of ['delay', 'appleDelay', 'settle', 'appleSettle']) {
     wireRange($, id, settings[id], (v) => apply({ [id]: v }))
   }
   wireNumber($, 'breathEvery', 1, get, apply)

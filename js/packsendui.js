@@ -1,7 +1,7 @@
 // "트레이로 압축 보내기" buttons on the 보내기 tab: the text box or a file goes deflated and as
 // base64 to the PC tray's receive window (firmware with CAPS.CHORD: 6 keys per report instead).
-// Typed faster than normal (settings: packDelay wired, packBtDelay Bluetooth); the normal key interval comes back once the
-// device has typed everything.
+// Typed at the shortest key interval: over Bluetooth the firmware spaces 6-key reports by the
+// PC's link interval itself. The normal interval comes back once the device has typed everything.
 
 import { packText, packChords, textPayload, filePayload, CHORD_GROUP } from './packed.js'
 import { textToCharOps } from './keymap.js'
@@ -12,8 +12,9 @@ import { formatDuration as seconds } from './sendstats.js'
 
 const IDLE_POLL_MS = 300
 const CONFIRM_OVER_S = 60
-const BLE_REPORT_MS = 9 // about one key report per link event (7.5 ms, some events missed)
-const USB_EXTRA_MS = 0.5
+const PACK_DELAY_MS = 2
+const BLE_REPORT_MS = 12 // one report per link event (7.5-15 ms), some events missed
+const USB_REPORT_MS = PACK_DELAY_MS + 0.5
 const WIRED = 1 // status.targetKind
 
 const typedOps = (text) => textToCharOps(text).groups.flat()
@@ -50,13 +51,11 @@ export function setupPackSend({ $, client, sender, notify, log, getSettings, get
     if (!client.connected) return notify('먼저 기기에 연결하세요')
     if (busy || sender.active) return notify('지금 타이핑 중입니다. 끝난 뒤에 보내세요')
     busy = true
-    const settings = getSettings()
     try {
       const payload = await makePayload()
       const job = plan(payload)
       const wired = client.status?.targetKind === WIRED
-      const delay = wired ? settings.packDelay : settings.packBtDelay
-      const perReport = wired ? delay + USB_EXTRA_MS : Math.max(delay, BLE_REPORT_MS)
+      const perReport = wired ? USB_REPORT_MS : BLE_REPORT_MS
       const estimate = job.reports * perReport
       const ok =
         estimate < CONFIRM_OVER_S * 1000 ||
@@ -65,9 +64,9 @@ export function setupPackSend({ $, client, sender, notify, log, getSettings, get
       const jobGeneration = sender.generation
       await waitDeviceIdle(jobGeneration) // text typed before this must not go at the fast interval
       notify(`PC의 받기 창을 앞에 두세요. ${job.chars}자 보내는 중`)
-      log(`pack send (${job.mode}): payload ${payload.length} B, ${job.chars} chars at ${delay} ms`)
+      log(`pack send (${job.mode}): payload ${payload.length} B, ${job.chars} chars`)
       const started = performance.now()
-      await sender.sendFrame(encodeSetDelay(delay, delay))
+      await sender.sendFrame(encodeSetDelay(PACK_DELAY_MS, PACK_DELAY_MS))
       const { completed } = await job.run()
       if (completed) await waitDeviceIdle(jobGeneration)
       if (!completed || sender.generation !== jobGeneration || !client.connected) return notify('보내기를 멈췄습니다')

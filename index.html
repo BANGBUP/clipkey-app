@@ -158,13 +158,6 @@
           <label><output id="settleOut">30</output> ms<input type="range" id="settle" min="0" max="500" step="10" value="30" aria-label="한/영 전환 후 대기 (Windows 등)"></label>
           <label><output id="appleSettleOut">30</output> ms<input type="range" id="appleSettle" min="0" max="500" step="10" value="30" aria-label="한/영 전환 후 대기 (iPad / Mac)"></label>
         </div>
-        <span class="row-head">트레이로 압축 보내기 키 간격</span>
-        <div class="timing-grid">
-          <span></span><span class="col-head">유선</span><span class="col-head">블루투스</span>
-          <span class="row-head">키 간격</span>
-          <label><output id="packDelayOut">2</output> ms<input type="range" id="packDelay" min="2" max="40" step="1" value="2" aria-label="압축 보내기 키 간격 (유선)"></label>
-          <label><output id="packBtDelayOut">12</output> ms<input type="range" id="packBtDelay" min="2" max="40" step="1" value="12" aria-label="압축 보내기 키 간격 (블루투스)"></label>
-        </div>
         <p class="hint">키 입력 간격은 작을수록 빠릅니다. 글자가 빠지거나 한글이 풀어지면 늘리세요(아이패드는 15ms에서 깨지고 20ms에서 정상이었음). 전환 직후 글자가 반대 언어로 찍히면(예: Cㅣaude) 한/영 대기를 늘리세요. iPad / Mac 쪽 한/영 대기는 펌웨어 1.0.25부터 따로 적용됩니다.</p>
       </div>
       <div class="field">
