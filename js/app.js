@@ -1,12 +1,14 @@
 // UI wiring for the ClipKey web app.
 
 import { createClient, isSupported } from './ble.js'
-import { unsupportedChars } from './keymap.js'
+import { unsupportedChars, countKeys } from './keymap.js'
 import { createSender } from './sender.js'
 import { setupKeyboard } from './keyboard.js'
 import { setupSetupCode } from './setupcode.js'
 import { setupPcReceive } from './pcrxui.js'
-import { setupSendStats } from './sendstats.js'
+import { setupPackSend } from './packsendui.js'
+import { setupPcScripts } from './pcscripts.js'
+import { setupSendStats, estimateTypingMs, formatDuration } from './sendstats.js'
 import { setupTypingBar } from './typingbar.js'
 import { createWakeLock } from './wakelock.js'
 import { setupReport } from './report.js'
@@ -238,6 +240,7 @@ const reconnector = createReconnector({
 })
 
 let typingBar = null
+let packSend = null
 const screenLock = createWakeLock() // the page freezes with the screen off: keep it on while typing
 const sender = createSender(client, (progress) => typingBar?.onSending(progress))
 
@@ -302,6 +305,10 @@ async function sendText(text, { record = true, resumed = false } = {}) {
     notify('보낼 텍스트가 없습니다')
     return false
   }
+  if (packSend?.isBusy()) {
+    notify('트레이로 압축 보내기 중입니다. 끝난 뒤에 보내세요')
+    return false
+  }
   try {
     log(`send ${[...text].length} chars`)
     const { skipped, completed, stopReason } = await sender.sendText(text, pacingOf(settings))
@@ -355,19 +362,21 @@ function setSendText(text) {
   sendStats?.update()
 }
 
+function typingTiming() {
+  const apple = isAppleHost()
+  return {
+    delayMs: apple ? settings.appleDelay : settings.delay,
+    settleMs: apple ? settings.appleSettle : settings.settle,
+    apple,
+    pacing: pacingOf(settings),
+  }
+}
+
 function wireSend() {
   sendStats = setupSendStats({
     textarea: $('sendText'),
     out: $('sendStats'),
-    getTiming: () => {
-      const apple = isAppleHost()
-      return {
-        delayMs: apple ? settings.appleDelay : settings.delay,
-        settleMs: apple ? settings.appleSettle : settings.settle,
-        apple,
-        pacing: pacingOf(settings),
-      }
-    },
+    getTiming: typingTiming,
   })
   $('sendBtn').addEventListener('click', () => sendText($('sendText').value))
   $('clearBtn').addEventListener('click', () => setSendText(''))
@@ -535,6 +544,14 @@ function init() {
       document.querySelector('.tab[data-tab="send"]').click()
     },
   })
+  setupPcScripts({
+    root: $('pcScriptList'),
+    typeText: (text) => sendText(text, { record: false }),
+    typeOps: (ops) => sender.sendOps(ops),
+    estimate: (text) => formatDuration(estimateTypingMs(countKeys(text), typingTiming())),
+    notify,
+  })
+  packSend = setupPackSend({ $, client, sender, notify, log, getSettings: () => settings, getText: () => $('sendText').value })
   phrases = setupPhrases({ sendText, fillInput: setSendText, notify })
   nickname = setupNickname({ client, notify, onChange: () => client.status && renderStatus(client.status) })
   hostsUi.render()

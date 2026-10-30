@@ -9,7 +9,8 @@
 
 .NOTES
   clipkey-send.ps1과 같은 폴더에 두세요.
-  아이콘 두 번 클릭 = 클립보드 보내기, 오른쪽 클릭 = 메뉴(파일 보내기, 멈추기, 천천히, 기록, 끝내기).
+  아이콘 두 번 클릭 = 클립보드 보내기, 오른쪽 클릭 = 메뉴(파일 보내기, 멈추기, 폰에서 받기, 천천히, 기록, 끝내기).
+  '폰에서 받기 창'은 같은 폴더의 clipkey-recv.ps1을 엽니다.
   보내는 동안 아이콘이 주황색으로 바뀌고, 끝나면 알림으로 결과를 알려 줍니다.
 #>
 param(
@@ -18,6 +19,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $sendScript = Join-Path $PSScriptRoot 'clipkey-send.ps1'
+$recvScript = Join-Path $PSScriptRoot 'clipkey-recv.ps1'
 $logFile = Join-Path $env:TEMP 'clipkey-tray.log'
 $startupLink = Join-Path ([Environment]::GetFolderPath('Startup')) 'ClipKey 보내기.lnk'
 $SlowDelayMs = 20
@@ -96,11 +98,12 @@ $miFile = New-Object Windows.Forms.ToolStripMenuItem '파일 보내기...'
 $miParts = New-Object Windows.Forms.ToolStripMenuItem '빠진 조각 다시 보내기...'
 $miStop = New-Object Windows.Forms.ToolStripMenuItem '보내기 멈추기'
 $miStop.Enabled = $false
+$miRecv = New-Object Windows.Forms.ToolStripMenuItem '폰에서 받기 창 열기 (압축 보내기)'
 $miSlow = New-Object Windows.Forms.ToolStripMenuItem ('천천히 보내기 (깨질 때, {0}ms)' -f $SlowDelayMs)
 $miSlow.CheckOnClick = $true
 $miLog = New-Object Windows.Forms.ToolStripMenuItem '마지막 기록 보기'
 $miQuit = New-Object Windows.Forms.ToolStripMenuItem '끝내기'
-[void]$menu.Items.AddRange(@($miClip, $miFile, $miParts, $miStop, (New-Object Windows.Forms.ToolStripSeparator), $miSlow, $miLog, $miQuit))
+[void]$menu.Items.AddRange(@($miClip, $miFile, $miParts, $miStop, (New-Object Windows.Forms.ToolStripSeparator), $miRecv, (New-Object Windows.Forms.ToolStripSeparator), $miSlow, $miLog, $miQuit))
 $tray.ContextMenuStrip = $menu
 $tray.Visible = $true
 
@@ -192,6 +195,10 @@ $miStop.Add_Click({
         $script:stopped = $true
         $script:proc.Kill()
     }
+})
+$miRecv.Add_Click({
+    if (-not (Test-Path $recvScript)) { Show-Note "clipkey-recv.ps1이 없습니다: $recvScript" 'Error'; return }
+    Start-Process powershell.exe -WindowStyle Hidden -ArgumentList ('-STA -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $recvScript)
 })
 $miLog.Add_Click({
     if (Test-Path $logFile) { Start-Process notepad.exe $logFile } else { Show-Note '아직 기록이 없습니다.' }

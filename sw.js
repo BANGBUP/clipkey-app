@@ -1,6 +1,6 @@
 // Offline cache for the app shell. Network first so updates show up immediately.
 // scripts/build-site.sh stamps CACHE per deploy, so every release installs a new worker.
-const CACHE = 'clipkey-1.0.69-8fad202'
+const CACHE = 'clipkey-1.0.70-5762b94'
 const SHELL = [
   './',
   'index.html',
@@ -14,6 +14,9 @@ const SHELL = [
   'js/setupcode.js',
   'js/pcrx.js',
   'js/pcrxui.js',
+  'js/packed.js',
+  'js/packsendui.js',
+  'js/pcscripts.js',
   'js/sendstats.js',
   'js/devevents.js',
   'js/otastream.js',
@@ -50,11 +53,19 @@ const SHELL = [
   'js/fwui.js',
   'js/version.js',
 ]
+// PC scripts typed by "PC 필수 스크립트": best effort (the local dev server has no tools/).
+const TOOLS = ['tools/clipkey-recv.ps1', 'tools/clipkey-send.ps1', 'tools/clipkey-tray.ps1']
 
 self.addEventListener('install', (event) => {
   // cache: 'reload' skips the HTTP cache, so a new worker never stores last deploy's files.
   const requests = SHELL.map((url) => new Request(url, { cache: 'reload' }))
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(requests)).then(() => self.skipWaiting()))
+  const tools = (c) => Promise.allSettled(TOOLS.map((url) => c.add(new Request(url, { cache: 'reload' }))))
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((c) => c.addAll(requests).then(() => tools(c)))
+      .then(() => self.skipWaiting()),
+  )
 })
 
 self.addEventListener('activate', (event) => {
