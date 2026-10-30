@@ -1,6 +1,6 @@
 // "트레이로 압축 보내기" buttons on the 보내기 tab: the text box or a file goes deflated and as
 // base64 to the PC tray's receive window (firmware with CAPS.CHORD: 6 keys per report instead).
-// Typed faster than normal (settings: packDelay); the normal key interval comes back once the
+// Typed faster than normal (settings: packDelay wired, packBtDelay Bluetooth); the normal key interval comes back once the
 // device has typed everything.
 
 import { packText, packChords, textPayload, filePayload, CHORD_GROUP } from './packed.js'
@@ -55,7 +55,8 @@ export function setupPackSend({ $, client, sender, notify, log, getSettings, get
       const payload = await makePayload()
       const job = plan(payload)
       const wired = client.status?.targetKind === WIRED
-      const perReport = wired ? settings.packDelay + USB_EXTRA_MS : Math.max(settings.packDelay, BLE_REPORT_MS)
+      const delay = wired ? settings.packDelay : settings.packBtDelay
+      const perReport = wired ? delay + USB_EXTRA_MS : Math.max(delay, BLE_REPORT_MS)
       const estimate = job.reports * perReport
       const ok =
         estimate < CONFIRM_OVER_S * 1000 ||
@@ -64,9 +65,9 @@ export function setupPackSend({ $, client, sender, notify, log, getSettings, get
       const jobGeneration = sender.generation
       await waitDeviceIdle(jobGeneration) // text typed before this must not go at the fast interval
       notify(`PC의 받기 창을 앞에 두세요. ${job.chars}자 보내는 중`)
-      log(`pack send (${job.mode}): payload ${payload.length} B, ${job.chars} chars at ${settings.packDelay} ms`)
+      log(`pack send (${job.mode}): payload ${payload.length} B, ${job.chars} chars at ${delay} ms`)
       const started = performance.now()
-      await sender.sendFrame(encodeSetDelay(settings.packDelay, settings.packDelay))
+      await sender.sendFrame(encodeSetDelay(delay, delay))
       const { completed } = await job.run()
       if (completed) await waitDeviceIdle(jobGeneration)
       if (!completed || sender.generation !== jobGeneration || !client.connected) return notify('보내기를 멈췄습니다')
