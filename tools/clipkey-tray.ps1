@@ -198,7 +198,12 @@ $miStop.Add_Click({
 })
 $miRecv.Add_Click({
     if (-not (Test-Path $recvScript)) { Show-Note "clipkey-recv.ps1이 없습니다: $recvScript" 'Error'; return }
-    Start-Process powershell.exe -WindowStyle Hidden -ArgumentList ('-STA -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $recvScript)
+    # -WindowStyle Hidden이면 받기 창까지 숨겨지므로, 콘솔 없이(CreateNoWindow) 띄웁니다.
+    $info = New-Object Diagnostics.ProcessStartInfo 'powershell.exe'
+    $info.Arguments = '-STA -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $recvScript
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    [void][Diagnostics.Process]::Start($info)
 })
 $miLog.Add_Click({
     if (Test-Path $logFile) { Start-Process notepad.exe $logFile } else { Show-Note '아직 기록이 없습니다.' }

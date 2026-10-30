@@ -4,7 +4,8 @@
   확인한 뒤 텍스트는 PC 클립보드로, 파일은 저장 창으로 복원합니다.
 
 .EXAMPLE
-  powershell -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File clipkey-recv.ps1
+  powershell -STA -ExecutionPolicy Bypass -File clipkey-recv.ps1
+  (-WindowStyle Hidden을 붙이면 이 창까지 숨겨집니다. 보통은 트레이 메뉴로 엽니다.)
 
 .NOTES
   받는 동안 이 창이 앞에 있어야 합니다(다른 창이 앞이면 그 창에 글자가 쳐짐).
