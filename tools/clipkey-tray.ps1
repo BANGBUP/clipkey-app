@@ -1,19 +1,4 @@
-﻿<#
-.SYNOPSIS
-  알림 영역(트레이)에 ClipKey 아이콘을 두고, 클릭 한 번으로 clipkey-send.ps1을 실행합니다.
-
-.EXAMPLE
-  powershell -ExecutionPolicy Bypass -File clipkey-tray.ps1 -Install     # 로그인할 때 자동 실행 등록 + 지금 띄우기
-  powershell -ExecutionPolicy Bypass -File clipkey-tray.ps1 -Uninstall   # 자동 실행 끄기
-  powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File clipkey-tray.ps1   # 지금만 띄우기
-
-.NOTES
-  clipkey-send.ps1과 같은 폴더에 두세요.
-  아이콘 두 번 클릭 = 클립보드 보내기, 오른쪽 클릭 = 메뉴(파일 보내기, 멈추기, 폰에서 받기, 천천히, 기록, 끝내기).
-  '폰에서 받기 창'은 같은 폴더의 clipkey-recv.ps1을 엽니다.
-  보내는 동안 아이콘이 주황색으로 바뀌고, 끝나면 알림으로 결과를 알려 줍니다.
-#>
-param(
+﻿param(
     [switch]$Install,
     [switch]$Uninstall
 )
@@ -23,7 +8,6 @@ $recvScript = Join-Path $PSScriptRoot 'clipkey-recv.ps1'
 $logFile = Join-Path $env:TEMP 'clipkey-tray.log'
 $startupLink = Join-Path ([Environment]::GetFolderPath('Startup')) 'ClipKey 보내기.lnk'
 $SlowDelayMs = 20
-
 if ($Uninstall) {
     Remove-Item $startupLink -ErrorAction SilentlyContinue
     Write-Host '자동 실행을 껐습니다. 떠 있는 아이콘은 오른쪽 클릭 > 끝내기로 닫으세요.' -ForegroundColor Green
@@ -35,23 +19,18 @@ if ($Install) {
     $link.TargetPath = (Get-Command powershell.exe).Source
     $link.Arguments = '-WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}"' -f $PSCommandPath
     $link.WorkingDirectory = $PSScriptRoot
-    $link.WindowStyle = 7 # 최소화
+    $link.WindowStyle = 7
     $link.Save()
     Start-Process $link.TargetPath -ArgumentList $link.Arguments -WindowStyle Hidden
     Write-Host '로그인할 때 자동으로 트레이에 뜨도록 등록했고, 지금도 띄웠습니다.' -ForegroundColor Green
     exit 0
 }
-
-# 하나만 실행
 $mutex = New-Object System.Threading.Mutex($false, 'ClipKeyTray')
 if (-not $mutex.WaitOne(0)) { exit 0 }
-
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing, Microsoft.VisualBasic
 Add-Type -Namespace ClipKeyTray -Name Keys -MemberDefinition @'
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);
 '@
-
-# 잠금 키: 보내기를 강제로 멈추면 보내던 쪽이 되돌리지 못하므로 여기서 되돌립니다.
 $LockKeys = @(
     @{ Name = 'NumLock'; Vk = 0x90; Scan = 0x45; Ext = 1 },
     @{ Name = 'CapsLock'; Vk = 0x14; Scan = 0x3A; Ext = 0 },
@@ -70,7 +49,6 @@ function Restore-Locks($want) {
         }
     }
 }
-
 function New-Icon([Drawing.Color]$color) {
     $bmp = New-Object Drawing.Bitmap 16, 16
     $g = [Drawing.Graphics]::FromImage($bmp)
@@ -87,7 +65,6 @@ function New-Icon([Drawing.Color]$color) {
 }
 $idleIcon = New-Icon ([Drawing.Color]::SteelBlue)
 $busyIcon = New-Icon ([Drawing.Color]::DarkOrange)
-
 $tray = New-Object Windows.Forms.NotifyIcon
 $tray.Icon = $idleIcon
 $tray.Text = 'ClipKey 보내기 (두 번 클릭: 클립보드)'
@@ -98,7 +75,7 @@ $miFile = New-Object Windows.Forms.ToolStripMenuItem '파일 보내기...'
 $miParts = New-Object Windows.Forms.ToolStripMenuItem '빠진 조각 다시 보내기...'
 $miStop = New-Object Windows.Forms.ToolStripMenuItem '보내기 멈추기'
 $miStop.Enabled = $false
-$miRecv = New-Object Windows.Forms.ToolStripMenuItem '폰에서 받기 창 열기 (압축 보내기)'
+$miRecv = New-Object Windows.Forms.ToolStripMenuItem '받기 창'
 $miSlow = New-Object Windows.Forms.ToolStripMenuItem ('천천히 보내기 (깨질 때, {0}ms)' -f $SlowDelayMs)
 $miSlow.CheckOnClick = $true
 $miLog = New-Object Windows.Forms.ToolStripMenuItem '마지막 기록 보기'
@@ -106,19 +83,16 @@ $miQuit = New-Object Windows.Forms.ToolStripMenuItem '끝내기'
 [void]$menu.Items.AddRange(@($miClip, $miFile, $miParts, $miStop, (New-Object Windows.Forms.ToolStripSeparator), $miRecv, (New-Object Windows.Forms.ToolStripSeparator), $miSlow, $miLog, $miQuit))
 $tray.ContextMenuStrip = $menu
 $tray.Visible = $true
-
 $timer = New-Object Windows.Forms.Timer
 $timer.Interval = 300
 $script:proc = $null
 $script:stopped = $false
-$script:lastArgs = $null # 마지막으로 보낸 것(조각 다시 보내기용)
-
+$script:lastArgs = $null
 function Show-Note([string]$text, [string]$kind = 'Info') {
     if (-not $text) { $text = '(내용 없음)' }
     if ($text.Length -gt 250) { $text = $text.Substring(0, 250) }
     $tray.ShowBalloonTip(5000, 'ClipKey', $text, [Windows.Forms.ToolTipIcon]$kind)
 }
-
 function Set-Busy([bool]$busy) {
     $tray.Icon = if ($busy) { $busyIcon } else { $idleIcon }
     $tray.Text = if ($busy) { 'ClipKey: 보내는 중 (키보드를 쓰지 마세요)' } else { 'ClipKey 보내기 (두 번 클릭: 클립보드)' }
@@ -127,14 +101,11 @@ function Set-Busy([bool]$busy) {
     $miParts.Enabled = -not $busy
     $miStop.Enabled = $busy
 }
-
-# clipkey-send.ps1을 창 없이 실행하고, 출력은 기록 파일과 알림으로 보여 줍니다.
 function Start-Send([string]$extraArgs) {
     if ($script:proc) { Show-Note '이미 보내는 중입니다.' 'Warning'; return }
     if (-not (Test-Path $sendScript)) { Show-Note "clipkey-send.ps1이 없습니다: $sendScript" 'Error'; return }
     if ($extraArgs -notmatch '-Parts') { $script:lastArgs = $extraArgs }
     if ($miSlow.Checked) { $extraArgs += " -DelayMs $SlowDelayMs" }
-    # 모든 출력을 글자로(*>&1), 멈춘 오류도 한 줄로
     $command = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; `$ProgressPreference = 'SilentlyContinue'; " +
         "try {{ & '{0}'{1} *>&1 | ForEach-Object {{ `"`$_`" }}; exit `$LASTEXITCODE }} " +
         "catch {{ `"오류: `$(`$_.Exception.Message)`"; exit 1 }}") -f $sendScript.Replace("'", "''"), $extraArgs
@@ -152,7 +123,6 @@ function Start-Send([string]$extraArgs) {
     $timer.Start()
     Show-Note '보내는 중입니다. 끝나면 알려 드립니다. 그동안 키보드를 쓰지 마세요.'
 }
-
 function Complete-Send {
     $timer.Stop()
     $code = $script:proc.ExitCode
@@ -173,7 +143,6 @@ function Complete-Send {
         Show-Note "보내지 못했습니다 (종료 코드 $code)." 'Error'
     }
 }
-
 $timer.Add_Tick({ if ($script:proc -and $script:proc.HasExited) { Complete-Send } })
 $miClip.Add_Click({ Start-Send '' })
 $tray.Add_MouseDoubleClick({ param($s, $e) if ($e.Button -eq 'Left') { Start-Send '' } })
@@ -182,7 +151,6 @@ $miFile.Add_Click({
     $dialog.Title = 'ClipKey로 보낼 파일 (크면 조각으로 나눠 보냄, 32KB에 약 13분)'
     if ($dialog.ShowDialog() -eq 'OK') { Start-Send (" -Path '{0}'" -f $dialog.FileName.Replace("'", "''")) }
 })
-# 앱이 "빠진 조각 3,5"라고 하면: 마지막에 보낸 것에서 그 조각만 (클립보드는 내용이 그대로여야 함)
 $miParts.Add_Click({
     if ($null -eq $script:lastArgs) { Show-Note '먼저 보낸 것이 없습니다.' 'Warning'; return }
     $what = if ($script:lastArgs) { '마지막에 보낸 파일' } else { '클립보드(보낼 때와 내용이 같아야 함)' }
@@ -198,7 +166,6 @@ $miStop.Add_Click({
 })
 $miRecv.Add_Click({
     if (-not (Test-Path $recvScript)) { Show-Note "clipkey-recv.ps1이 없습니다: $recvScript" 'Error'; return }
-    # -WindowStyle Hidden이면 받기 창까지 숨겨지므로, 콘솔 없이(CreateNoWindow) 띄웁니다.
     $info = New-Object Diagnostics.ProcessStartInfo 'powershell.exe'
     $info.Arguments = '-STA -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $recvScript
     $info.UseShellExecute = $false
@@ -218,7 +185,6 @@ $miQuit.Add_Click({
     $tray.Visible = $false
     [Windows.Forms.Application]::Exit()
 })
-
 try {
     [Windows.Forms.Application]::Run()
 }
