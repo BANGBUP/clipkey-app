@@ -15,8 +15,37 @@ public static uint Crc32(byte[] data, int count) {
     for (int i = 0; i < count; i++) crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
     return crc ^ 0xFFFFFFFFu;
 }
+public static byte[] FromChords(string body, int byteCount) {
+    const string keys = "abcdefghijklmnopqrstuvwxyz0123456789-=;',./";
+    string text = body.ToLowerInvariant();
+    byte[] output = new byte[byteCount];
+    string prev = "", group = "";
+    int acc = 0, bits = 0, n = 0;
+    for (int p = 0; p < text.Length; p++) {
+        if (p % 6 == 0) { prev = group; group = ""; }
+        int v = 0;
+        bool found = false;
+        foreach (char k in keys) {
+            if (prev.IndexOf(k) >= 0 || group.IndexOf(k) >= 0) continue;
+            if (k == text[p]) { found = true; break; }
+            v++;
+        }
+        if (!found || v > 31) return null;
+        group += text[p];
+        acc = (acc << 5) | v;
+        bits += 5;
+        if (bits >= 8) {
+            bits -= 8;
+            if (n < byteCount) output[n++] = (byte)(acc >> bits);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    return n == byteCount ? output : null;
+}
 '@
 $Prefix = '[CK1.'
+$ChordPrefix = '[ck2.'
+$HeadPattern = '^\[(CK1|(?i:ck2))\.(\d+)\.$'
 $PreviewMax = 3000
 $Downloads = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'
 function Expand-Bytes([byte[]]$data, [int]$offset) {
@@ -117,22 +146,31 @@ function Restore-Payload([byte[]]$payload, [string]$took) {
     Copy-Text
     Set-Status ("완료: {0}자, 클립보드에 복사함{1}" -f $text.Length, $took) 'DarkGreen'
 }
+function Get-WantChars([bool]$chord, [int]$n) {
+    if ($chord) { [int][math]::Ceiling($n * 8 / 5) } else { $n }
+}
 function Restore-Typed([string]$typed, [string]$took = '') {
-    $m = [regex]::Match($typed, '\[CK1\.(\d+)\.([A-Za-z0-9+/=\s]*)\]')
+    $m = [regex]::Match($typed, '\[(CK1|(?i:ck2))\.(\d+)\.([^\]]*)\]')
     if (-not $m.Success) {
         Set-Status '오류: 형식' 'Red'
         return
     }
-    $data = $m.Groups[2].Value -replace '\s', ''
-    $want = 0
-    [void][int]::TryParse($m.Groups[1].Value, [ref]$want)
+    $chord = $m.Groups[1].Value -ne 'CK1'
+    $data = $m.Groups[3].Value -replace '\s', ''
+    $n = 0
+    [void][int]::TryParse($m.Groups[2].Value, [ref]$n)
+    $want = Get-WantChars $chord $n
     if ($data.Length -ne $want) {
         Set-Status ("오류: 글자 수 {0}/{1}" -f $data.Length, $want) 'Red'
         return
     }
-    try {
-        $all = [Convert]::FromBase64String($data)
-    } catch {
+    $all = $null
+    if ($chord) {
+        $all = [ClipKey.Unpack]::FromChords($data, $n)
+    } else {
+        try { $all = [Convert]::FromBase64String($data) } catch { }
+    }
+    if ($null -eq $all) {
         Set-Status '오류: 글자 깨짐' 'Red'
         return
     }
@@ -186,17 +224,17 @@ function Add-Char([char]$c) {
         Restore-Typed $typed $took
         return
     }
-    if ($buf.Length -eq $Prefix.Length -and $buf.ToString() -cne $Prefix) {
+    if ($buf.Length -eq $Prefix.Length -and $buf.ToString() -cne $Prefix -and $buf.ToString() -ne $ChordPrefix) {
         $got = $buf.ToString()
         Reset-Receive
         Set-Status ("오류: 시작 {0}" -f $got) 'Red'
         return
     }
     if ($script:want -lt 0 -and $c -eq '.' -and $buf.Length -gt $Prefix.Length) {
-        $m = [regex]::Match($buf.ToString(), '^\[CK1\.(\d+)\.$')
+        $m = [regex]::Match($buf.ToString(), $HeadPattern)
         $n = 0
-        if ($m.Success -and [int]::TryParse($m.Groups[1].Value, [ref]$n)) {
-            $script:want = $n
+        if ($m.Success -and [int]::TryParse($m.Groups[2].Value, [ref]$n)) {
+            $script:want = Get-WantChars ($m.Groups[1].Value -ne 'CK1') $n
             $script:head = $buf.Length
         }
     }

@@ -66,9 +66,66 @@ function toBase64(bytes) {
   return btoa(binary)
 }
 
+const withCrc = (payload) => {
+  const crc = crc32(payload)
+  return concat(payload, [crc & 0xff, (crc >>> 8) & 0xff, (crc >>> 16) & 0xff, crc >>> 24])
+}
+
 /** What the ClipKey types for a payload. */
 export function packText(payload) {
-  const crc = crc32(payload)
-  const body = toBase64(concat(payload, [crc & 0xff, (crc >>> 8) & 0xff, (crc >>> 16) & 0xff, crc >>> 24]))
+  const body = toBase64(withCrc(payload))
   return `${PACK_PREFIX}${body.length}.${body}${PACK_END}`
+}
+
+// ---- chords (firmware CAPS.CHORD): 6 keys per report ----
+// [ck2.<bytes>.<chords>]: the header and ] are typed as usual, the body as ITEM.CHORD keys.
+// Each group of 6 has no key twice and none of the previous group's keys (the PC only sees
+// newly pressed keys). A 5-bit value picks the n-th key still allowed, in CHORD_CHARS order;
+// at least 43 - 6 - 5 = 32 are always left. Only unshifted keys: Caps Lock just changes the
+// letters' case, which the receiver ignores.
+export const CHORD_PREFIX = '[ck2.'
+export const CHORD_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789-=;',./"
+export const CHORD_GROUP = 6
+export const CHORD_HID = [
+  ...Array.from({ length: 26 }, (_, i) => 0x04 + i),
+  0x27, // 0
+  ...Array.from({ length: 9 }, (_, i) => 0x1e + i), // 1-9
+  0x2d, 0x2e, 0x33, 0x34, 0x36, 0x37, 0x38, // - = ; ' , . /
+]
+const BITS = 5
+
+/** Body characters for `bytes` (5 bits each, high bits first). */
+export function chordChars(bytes) {
+  const values = []
+  let acc = 0
+  let nbits = 0
+  for (const b of bytes) {
+    acc = (acc << 8) | b
+    nbits += 8
+    while (nbits >= BITS) {
+      nbits -= BITS
+      values.push((acc >> nbits) & 31)
+    }
+    acc &= (1 << nbits) - 1
+  }
+  if (nbits > 0) values.push((acc << (BITS - nbits)) & 31)
+  let prev = ''
+  let group = ''
+  let out = ''
+  values.forEach((v, i) => {
+    if (i % CHORD_GROUP === 0) [prev, group] = [group, '']
+    const ch = [...CHORD_CHARS].filter((c) => !prev.includes(c) && !group.includes(c))[v]
+    group += ch
+    out += ch
+  })
+  return out
+}
+
+/** { header, keys (HID codes for ITEM.CHORD), end, chars (all typed characters) }. */
+export function packChords(payload) {
+  const bytes = withCrc(payload)
+  const body = chordChars(bytes)
+  const header = `${CHORD_PREFIX}${bytes.length}.`
+  const keys = [...body].map((c) => CHORD_HID[CHORD_CHARS.indexOf(c)])
+  return { header, keys, end: PACK_END, chars: header.length + body.length + PACK_END.length }
 }

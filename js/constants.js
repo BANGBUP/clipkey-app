@@ -29,6 +29,7 @@ export const OP = Object.freeze({
   COMMIT: 'commit', // finish any in-progress hangul composition
   PAUSE: 'pause', // { ms } rest so a slow PC app catches up (긴 글 숨 고르기)
   PACE: 'pace', // { ms } extra per key from here until the device runs out of keys
+  CHORD: 'chord', // { key } each 6 in a row go down together in one report (firmware CAPS.CHORD)
 })
 
 // Wire encoding: every queue item is 2 bytes [a, b].
@@ -40,6 +41,7 @@ export const ITEM = Object.freeze({
   COMMIT: 0xf1,
   PAUSE: 0xf3, // b = pause x10 ms
   PACE: 0xf4, // b = extra ms per key
+  CHORD: 0xf5, // b = HID key, 6 in a row per report
 })
 
 export const FRAME = Object.freeze({
@@ -180,6 +182,7 @@ export const CAPS = Object.freeze({
   PACING: 1 << 4, // PAUSE / PACE items and a separate iPad·Mac 한/영 wait are understood
   AWAKE_SCHEDULE: 1 << 5, // SET_CLOCK / SET_AWAKE_SCHEDULE are understood
   KEY_STATE: 1 << 6, // KEY_STATE is understood: held keys repeat on the PC itself
+  CHORD: 1 << 7, // ITEM.CHORD is understood: 6 keys per report for 트레이로 압축 보내기
   REG_WINDOW: 1 << 2, // BOOT was pressed: one phone may register with REGISTER_DEFAULT_CODE (60 s)
 })
 

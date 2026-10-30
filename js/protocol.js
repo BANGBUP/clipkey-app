@@ -16,6 +16,8 @@ export function opToItem(op) {
       return [ITEM.PAUSE, Math.max(0, Math.min(255, Math.round(op.ms / 10)))]
     case OP.PACE:
       return [ITEM.PACE, Math.max(0, Math.min(100, Math.round(op.ms)))]
+    case OP.CHORD:
+      return [ITEM.CHORD, op.key & 0xff]
     default:
       throw new Error(`알 수 없는 op: ${JSON.stringify(op)}`)
   }
@@ -186,6 +188,7 @@ export function parseStatus(view) {
     btPcs: view.byteLength >= 21 ? view.getUint8(20) : null, // firmware 1.0.34+: Bluetooth PCs connected
     awakeSchedule: view.byteLength >= 15 && (view.getUint8(14) & CAPS.AWAKE_SCHEDULE) !== 0, // firmware 1.0.32+
     keyState: view.byteLength >= 15 && (view.getUint8(14) & CAPS.KEY_STATE) !== 0, // firmware 1.0.39+
+    chord: view.byteLength >= 15 && (view.getUint8(14) & CAPS.CHORD) !== 0,
   })
 }
 
