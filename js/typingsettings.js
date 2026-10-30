@@ -12,7 +12,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   delay: 15,
   appleDelay: 20,
   packDelay: 2, // 트레이로 압축 보내기 over USB: only while that runs
-  packBtDelay: 8, // the same over Bluetooth: bursts of 6-key reports lose keys on the PC
+  packBtDelay: 12, // the same over Bluetooth: faster than one report per link event loses keys
   settle: 30,
   appleSettle: 30,
   breathEvery: DEFAULT_PACING.every,
