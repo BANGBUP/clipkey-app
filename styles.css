@@ -260,6 +260,7 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 .day-btn.on { border-color: var(--ok); color: var(--ok); font-weight: 700; }
 .awake-ranges { display: flex; flex-direction: column; gap: 6px; }
 .range-row { align-items: center; gap: 6px; }
+.range-times { display: inline-flex; align-items: center; gap: 4px; }
 .time-input { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
 .dim { opacity: 0.45; }
 .awake-pcs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 6px 0 2px; }

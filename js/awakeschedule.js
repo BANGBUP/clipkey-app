@@ -14,8 +14,8 @@ export const DEFAULT_SCHEDULE = Object.freeze({
   on: false,
   days: Object.freeze([1, 2, 3, 4, 5]), // 0 = Sunday, like Date.getDay()
   ranges: Object.freeze([
-    Object.freeze({ start: 9 * 60, end: 12 * 60 }),
-    Object.freeze({ start: 13 * 60, end: 18 * 60 }),
+    Object.freeze({ start: 9 * 60, end: 12 * 60, on: true }),
+    Object.freeze({ start: 13 * 60, end: 18 * 60, on: true }),
   ]),
 })
 
@@ -27,7 +27,7 @@ export function validateSchedule(input) {
   const ranges = (Array.isArray(input?.ranges) ? input.ranges : [])
     .filter((r) => isMinute(r?.start) && isMinute(r?.end) && r.end > r.start && r.start < DAY_MIN)
     .slice(0, RANGES_MAX)
-    .map((r) => Object.freeze({ start: r.start, end: r.end }))
+    .map((r) => Object.freeze({ start: r.start, end: r.end, on: r.on !== false })) // saved before the check box: on
   return Object.freeze({ on: Boolean(input?.on), days: Object.freeze(days), ranges: Object.freeze(ranges) })
 }
 
@@ -58,12 +58,15 @@ export function textToMinute(text) {
   return h < 24 && m < 60 ? h * 60 + m : null
 }
 
-/** [0x2A, on, days, count, (start, end u16 LE)*] */
+const activeRanges = (schedule) => schedule.ranges.filter((r) => r.on !== false)
+
+/** [0x2A, on, days, count, (start, end u16 LE)*]: only the ranges that are checked. */
 export function encodeSetAwakeSchedule(schedule) {
   const s = validateSchedule(schedule)
   const days = s.days.reduce((mask, d) => mask | (1 << d), 0)
-  const bytes = s.ranges.flatMap(({ start, end }) => [start & 0xff, start >> 8, end & 0xff, end >> 8])
-  return Uint8Array.from([FRAME.SET_AWAKE_SCHEDULE, s.on ? 1 : 0, days, s.ranges.length, ...bytes])
+  const ranges = activeRanges(s)
+  const bytes = ranges.flatMap(({ start, end }) => [start & 0xff, start >> 8, end & 0xff, end >> 8])
+  return Uint8Array.from([FRAME.SET_AWAKE_SCHEDULE, s.on ? 1 : 0, days, ranges.length, ...bytes])
 }
 
 /** The phone's local time as seconds since 1970-01-01 00:00 local: [0x29, u32 LE]. */
@@ -80,7 +83,7 @@ export const scheduleFrames = (schedule, status) =>
 export function describeSchedule(schedule, status) {
   if (!schedule.on) return '하루 종일 작동'
   const days = schedule.days.length === 7 ? '매일' : schedule.days.map((d) => DAY_NAMES[d]).join('·') || '요일 없음'
-  const hours = schedule.ranges.map((r) => `${minuteToText(r.start)}~${minuteToText(r.end)}`).join(', ') || '시간대 없음'
+  const hours = activeRanges(schedule).map((r) => `${minuteToText(r.start)}~${minuteToText(r.end)}`).join(', ') || '시간대 없음'
   const resting = status && (status.awakeFlags & AWAKE_FLAG.RESTING) !== 0
   return `${days} ${hours}${resting ? ' · 지금은 쉬는 중' : status?.keepAwakeSeconds ? ' · 지금 작동 중' : ''}`
 }
@@ -140,13 +143,19 @@ export function setupAwakeSchedule({ client, notify }) {
         draw()
         return
       }
-      apply({ ...schedule, ranges: schedule.ranges.map((r, i) => (i === index ? { start: s, end: e } : r)) })
+      apply({ ...schedule, ranges: schedule.ranges.map((r, i) => (i === index ? { ...r, start: s, end: e } : r)) })
     }
+    const active = el('input', { type: 'checkbox', checked: range.on, title: '이 시간대 사용' })
+    active.setAttribute('aria-label', '이 시간대 사용')
+    active.addEventListener('change', () =>
+      apply({ ...schedule, ranges: schedule.ranges.map((r, i) => (i === index ? { ...r, on: active.checked } : r)) }),
+    )
     start.addEventListener('change', update)
     end.addEventListener('change', update)
     const remove = el('button', { type: 'button', className: 'btn small', textContent: '삭제' })
     remove.addEventListener('click', () => apply({ ...schedule, ranges: schedule.ranges.filter((_, i) => i !== index) }))
-    return el('div', { className: 'row range-row' }, [start, el('span', { textContent: '~' }), end, remove])
+    const times = el('span', { className: `range-times${range.on ? '' : ' dim'}` }, [start, el('span', { textContent: ' ~ ' }), end])
+    return el('div', { className: 'row range-row' }, [active, times, remove])
   }
 
   function draw() {
@@ -154,7 +163,8 @@ export function setupAwakeSchedule({ client, notify }) {
     box.classList.toggle('hidden', !status?.awakeSchedule)
     toggle.checked = schedule.on
     daysBox.replaceChildren(...dayButtons())
-    if (!rangesBox.contains(document.activeElement)) {
+    // Not while a time is being typed (the box would lose it); a button or check box: redraw.
+    if (!(rangesBox.contains(document.activeElement) && document.activeElement.type === 'time')) {
       rangesBox.replaceChildren(...schedule.ranges.map(rangeRow))
     }
     addBtn.disabled = schedule.ranges.length >= RANGES_MAX
@@ -166,7 +176,7 @@ export function setupAwakeSchedule({ client, notify }) {
   addBtn.addEventListener('click', () => {
     const last = schedule.ranges.at(-1)
     const start = last ? Math.min(last.end + 60, DAY_MIN - 60) : 9 * 60
-    apply({ ...schedule, ranges: [...schedule.ranges, { start, end: start + 60 }] })
+    apply({ ...schedule, ranges: [...schedule.ranges, { start, end: start + 60, on: true }] })
   })
 
   return Object.freeze({
