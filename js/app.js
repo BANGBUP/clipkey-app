@@ -49,6 +49,20 @@ const log = (m) => appLog.add(`[app] ${m}`)
 log(`start: app ${APP_VERSION} ${navigator.onLine ? 'online' : 'offline'} | ${navigator.userAgent}`)
 
 const $ = (id) => document.getElementById(id)
+
+// The top block sticks with only the title row scrolled away: from the chips down stays visible.
+function keepTopBlock() {
+  const block = $('stickyTop')
+  const place = () => {
+    const margin = parseFloat(getComputedStyle($('chips')).marginTop) || 0
+    const hidden = $('chips').getBoundingClientRect().top - block.getBoundingClientRect().top - margin
+    block.style.top = `${-Math.max(0, hidden)}px`
+  }
+  new ResizeObserver(place).observe(block)
+  place()
+}
+keepTopBlock()
+
 let toastTimer = null
 function notify(message) {
   log(`notify: ${message}`)
