@@ -40,7 +40,7 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-.top { padding: 12px 16px 0; background: var(--surface); }
+.top { display: flow-root; padding: 12px 16px 0; background: var(--surface); }
 /* Connection, LEDs, the PC row and the tabs stay at the top; only the title row scrolls away */
 .sticky-top { position: sticky; top: 0; z-index: 10; }
 .status-bar { display: flow-root; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
@@ -48,6 +48,7 @@ body {
 h1 { font-size: 20px; margin: 0; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chips:not(:has(.chip:not(.hidden))) { display: none; }
 .chip {
   font-size: 12px; padding: 2px 8px; border-radius: 999px;
   border: 1px solid var(--border); color: var(--muted);
