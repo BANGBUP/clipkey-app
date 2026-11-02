@@ -97,6 +97,14 @@ function render(root) {
 /**
  * @param {{ root: HTMLElement, client, sender, notify: (msg: string) => void, isApple: () => boolean }} deps
  */
+// Where typing belongs to the page: text boxes (not check boxes, sliders or buttons).
+const TEXT_INPUTS = new Set(['text', 'search', 'password', 'email', 'url', 'tel', 'number', 'time', 'date'])
+export function isTextField(target) {
+  const field = target?.closest?.('input, textarea, [contenteditable="true"]')
+  if (!field) return false
+  return field.tagName !== 'INPUT' || TEXT_INPUTS.has(field.type)
+}
+
 export function setupKeyboard({ root, client, sender, notify, isApple }) {
   let mods = EMPTY_MODS
   render(root)
@@ -147,8 +155,8 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
     }
   })
 
-  // A physical keyboard on the phone: while this tab is open (and no text box has focus)
-  // every key goes to the PC as is.
+  // A physical keyboard on the phone: on every tab, unless a text box has focus, every key goes
+  // to the PC as is. The app's own buttons are for touch only.
   const physical = createPhysicalKeys()
   const held = createKeyState() // newer firmware: press / release go out as they happen
   const holdMode = () => Boolean(client.status?.keyState)
@@ -168,11 +176,7 @@ export function setupKeyboard({ root, client, sender, notify, isApple }) {
     resendTimer = setTimeout(() => client.connected && writeState(state), RESEND_MS)
     return writeState(state)
   }
-  const panel = root.closest('.panel')
-  const listening = (event) => {
-    const field = event.target?.closest?.('input, textarea, select, [contenteditable="true"]')
-    return !field && panel?.classList.contains('active') && client.connected
-  }
+  const listening = (event) => !isTextField(event.target) && client.connected
 
   document.addEventListener('keydown', (event) => {
     if (!listening(event)) return

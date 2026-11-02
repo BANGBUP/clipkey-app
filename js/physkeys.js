@@ -1,4 +1,4 @@
-// A physical keyboard on the phone (Bluetooth / USB OTG) while the 키보드 tab is open:
+// A physical keyboard on the phone (Bluetooth / USB OTG), on any tab unless a text box has focus:
 // every key goes to the PC as the same key (event.code = position, so the phone's layout
 // and IME don't matter). A modifier pressed and released alone is sent too (Win → Start,
 // right Alt → 한/영 on Windows); with another key it only modifies that key.
