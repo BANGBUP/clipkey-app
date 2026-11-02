@@ -14,7 +14,7 @@ const IDLE_POLL_MS = 300
 const CONFIRM_OVER_S = 60
 const PACK_DELAY_MS = 2
 const BLE_REPORT_MS = 12 // one report per link event (7.5-15 ms), some events missed
-const USB_REPORT_MS = PACK_DELAY_MS + 0.5
+const USB_REPORT_MS = 4.5 // firmware CHORD_USB_MIN_MS: faster lost keys on the PC
 const WIRED = 1 // status.targetKind
 
 const typedOps = (text) => textToCharOps(text).groups.flat()

@@ -20,18 +20,19 @@ public static byte[] FromChords(string body, int byteCount) {
     string text = body.ToLowerInvariant();
     byte[] output = new byte[byteCount];
     string prev = "", group = "";
-    int acc = 0, bits = 0, n = 0;
-    for (int p = 0; p < text.Length; p++) {
-        if (p % 6 == 0) { prev = group; group = ""; }
+    int acc = 0, bits = 0, n = 0, p = 0;
+    foreach (char ch in text) {
+        if (group.Length == 6) { prev = group; group = ""; }
+        if (keys.IndexOf(ch) < 0) return null;
+        if (prev.IndexOf(ch) >= 0 || group.IndexOf(ch) >= 0) continue;
         int v = 0;
-        bool found = false;
         foreach (char k in keys) {
-            if (prev.IndexOf(k) >= 0 || group.IndexOf(k) >= 0) continue;
-            if (k == text[p]) { found = true; break; }
-            v++;
+            if (k == ch) break;
+            if (prev.IndexOf(k) < 0 && group.IndexOf(k) < 0) v++;
         }
-        if (!found || v > 31) return null;
-        group += text[p];
+        if (v > 31) return null;
+        p++;
+        group += ch;
         acc = (acc << 5) | v;
         bits += 5;
         if (bits >= 8) {
@@ -40,7 +41,45 @@ public static byte[] FromChords(string body, int byteCount) {
             acc &= (1 << bits) - 1;
         }
     }
-    return n == byteCount ? output : null;
+    return n == byteCount && p == (byteCount * 8 + 4) / 5 ? output : null;
+}
+'@
+Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition @'
+using System;
+using System.Text;
+using System.Windows.Forms;
+namespace ClipKey {
+public class Catcher : IMessageFilter {
+    const int WM_CHAR = 0x0102;
+    readonly Form form;
+    public readonly StringBuilder Buf = new StringBuilder();
+    public string Typed;
+    public event EventHandler Started;
+    public event EventHandler Finished;
+    public Catcher(Form form) { this.form = form; }
+    bool Mine(IntPtr hwnd) {
+        for (Control c = Control.FromHandle(hwnd); c != null; c = c.Parent) if (c == form) return true;
+        return false;
+    }
+    public bool PreFilterMessage(ref Message m) {
+        if (m.Msg != WM_CHAR || !Mine(m.HWnd)) return false;
+        char c = (char)m.WParam.ToInt64();
+        if (c < ' ') return true;
+        if (c == '[') {
+            if (Started != null) Started(this, EventArgs.Empty);
+            Buf.Clear();
+        } else if (Buf.Length == 0) {
+            return true;
+        }
+        Buf.Append(c);
+        if (c == ']') {
+            Typed = Buf.ToString();
+            Buf.Clear();
+            if (Finished != null) Finished(this, EventArgs.Empty);
+        }
+        return true;
+    }
+}
 }
 '@
 $Prefix = '[CK1.'
@@ -66,7 +105,6 @@ $form.Text = '받기'
 $form.Size = New-Object Drawing.Size(560, 420)
 $form.StartPosition = 'CenterScreen'
 $form.TopMost = $true
-$form.KeyPreview = $true
 $form.ImeMode = 'Disable'
 $status = New-Object Windows.Forms.Label
 $status.Dock = 'Top'
@@ -160,7 +198,7 @@ function Restore-Typed([string]$typed, [string]$took = '') {
     $n = 0
     [void][int]::TryParse($m.Groups[2].Value, [ref]$n)
     $want = Get-WantChars $chord $n
-    if ($data.Length -ne $want) {
+    if ($data.Length -lt $want -or (-not $chord -and $data.Length -ne $want)) {
         Set-Status ("오류: 글자 수 {0}/{1}" -f $data.Length, $want) 'Red'
         return
     }
@@ -171,7 +209,8 @@ function Restore-Typed([string]$typed, [string]$took = '') {
         try { $all = [Convert]::FromBase64String($data) } catch { }
     }
     if ($null -eq $all) {
-        Set-Status '오류: 글자 깨짐' 'Red'
+        $reason = if ($data.Length -ne $want) { "글자 수 {0}/{1}" -f $data.Length, $want } else { '글자 깨짐' }
+        Set-Status ("오류: {0}" -f $reason) 'Red'
         return
     }
     $n = $all.Length - 4
@@ -187,7 +226,8 @@ function Restore-Typed([string]$typed, [string]$took = '') {
         Set-Status ("오류: {0}" -f $_.Exception.Message) 'Red'
     }
 }
-$buf = New-Object Text.StringBuilder
+$catcher = New-Object ClipKey.Catcher($form)
+$buf = $catcher.Buf
 $script:want = -1
 $script:head = 0
 $clock = New-Object Diagnostics.Stopwatch
@@ -205,44 +245,39 @@ function Clear-View {
     $btnSave.Enabled = $false
     $preview.Text = ''
 }
-function Add-Char([char]$c) {
-    if ($c -eq '[') {
-        Clear-View
-        [void]$buf.Append($c)
-        $clock.Restart()
-        return
-    }
-    if ($buf.Length -eq 0) { return }
-    [void]$buf.Append($c)
-    if ($c -eq ']') {
-        $clock.Stop()
-        $s = $clock.Elapsed.TotalSeconds
-        $chars = $buf.Length
-        $took = ", {0:N1}초, 초당 {1:N0}자" -f $s, ($chars / [math]::Max($s, 0.001))
-        $typed = $buf.ToString()
+$catcher.add_Started({
+    Clear-View
+    $clock.Restart()
+})
+$catcher.add_Finished({
+    $clock.Stop()
+    $s = $clock.Elapsed.TotalSeconds
+    $typed = $catcher.Typed
+    $took = ", {0:N1}초, 초당 {1:N0}자" -f $s, ($typed.Length / [math]::Max($s, 0.001))
+    Reset-Receive
+    Restore-Typed $typed $took
+})
+function Test-Head {
+    if ($buf.Length -lt $Prefix.Length -or $script:want -ge 0) { return $true }
+    $start = $buf.ToString(0, $Prefix.Length)
+    if ($start -cne $Prefix -and $start -ne $ChordPrefix) {
         Reset-Receive
-        Restore-Typed $typed $took
-        return
+        Set-Status ("오류: 시작 {0}" -f $start) 'Red'
+        return $false
     }
-    if ($buf.Length -eq $Prefix.Length -and $buf.ToString() -cne $Prefix -and $buf.ToString() -ne $ChordPrefix) {
-        $got = $buf.ToString()
-        Reset-Receive
-        Set-Status ("오류: 시작 {0}" -f $got) 'Red'
-        return
+    $m = [regex]::Match($buf.ToString(0, [math]::Min($buf.Length, 32)), $HeadPattern)
+    $n = 0
+    if ($m.Success -and [int]::TryParse($m.Groups[2].Value, [ref]$n)) {
+        $script:want = Get-WantChars ($m.Groups[1].Value -ne 'CK1') $n
+        $script:head = $m.Length
     }
-    if ($script:want -lt 0 -and $c -eq '.' -and $buf.Length -gt $Prefix.Length) {
-        $m = [regex]::Match($buf.ToString(), $HeadPattern)
-        $n = 0
-        if ($m.Success -and [int]::TryParse($m.Groups[2].Value, [ref]$n)) {
-            $script:want = Get-WantChars ($m.Groups[1].Value -ne 'CK1') $n
-            $script:head = $buf.Length
-        }
-    }
+    $true
 }
 $timer = New-Object Windows.Forms.Timer
 $timer.Interval = 200
 $timer.Add_Tick({
     if ($buf.Length -eq 0) { return }
+    if (-not (Test-Head)) { return }
     if ($script:covered) {
         Set-Status '창이 가려짐' 'Red'
         return
@@ -257,11 +292,7 @@ $timer.Add_Tick({
     }
 })
 $timer.Start()
-$form.Add_KeyPress({
-    param($s, $e)
-    $e.Handled = $true
-    if ($e.KeyChar -ge ' ') { Add-Char $e.KeyChar }
-})
+[Windows.Forms.Application]::AddMessageFilter($catcher)
 $form.Add_Deactivate({ $script:covered = $true })
 $form.Add_Activated({ $script:covered = $false })
 $btnCopy.Add_Click({ Copy-Text; Set-Status '복사함' 'DarkGreen' })
@@ -270,4 +301,5 @@ $btnSave.Add_Click({ Save-File })
 $btnClose.Add_Click({ $form.Close() })
 $form.Add_Shown({ $form.Activate() })
 [void]$form.ShowDialog()
+[Windows.Forms.Application]::RemoveMessageFilter($catcher)
 $timer.Dispose()
