@@ -10,45 +10,49 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="hostBar" class="host-bar hidden" role="alert">
-    <strong>⚠ 호스트 모드</strong> — OTG 포트가 <b>키보드 입력용</b>입니다. 이 포트를 PC에 꽂지 마세요(역전류 위험).
-    <span id="hostBarStale" class="hidden">(마지막 연결 기준)</span>
-  </div>
   <header class="top">
     <div class="title-row">
       <h1>ClipKey <span class="app-version" id="appVersion"></span></h1>
       <button id="connectBtn" class="btn primary">연결</button>
     </div>
-    <div class="chips" id="chips">
-      <span class="chip" data-chip="link">기기 미연결</span>
-      <span class="chip hidden" data-chip="usb">유선</span>
-      <span class="chip hidden" data-chip="bt">블루투스</span>
-      <span class="chip rx hidden" data-chip="rx" role="button" title="받기 탭 열기">수신 중</span>
-    </div>
-    <div class="leds" role="group" aria-label="PC 키보드 표시등">
-      <span class="led" data-led="num" title="Num Lock">Num</span>
-      <span class="led" data-led="caps" title="Caps Lock">Caps</span>
-      <span class="led" data-led="scroll" title="Scroll Lock">Scroll</span>
-      <span class="led" data-led="compose" title="Compose">Comp</span>
-      <span class="led" data-led="kana" title="Kana">Kana</span>
-    </div>
   </header>
-  <div class="pc-bar">
-    <div class="pc-row">
-      <span class="target" id="targetLabel"></span>
-      <button type="button" class="ime-btn" id="imeBtn" disabled
-        title="PC 화면의 한/영 표시와 다르면 눌러서 맞추세요 (키는 입력되지 않음)">
-        한/영 전환 <span class="ime-badge" id="imeBadge">-</span>
-      </button>
+  <div class="sticky-top">
+    <div id="hostBar" class="host-bar hidden" role="alert">
+      <strong>⚠ 호스트 모드</strong> — OTG 포트가 <b>키보드 입력용</b>입니다. 이 포트를 PC에 꽂지 마세요(역전류 위험).
+      <span id="hostBarStale" class="hidden">(마지막 연결 기준)</span>
     </div>
-  </div>
+    <div class="status-bar">
+      <div class="chips" id="chips">
+        <span class="chip" data-chip="link">기기 미연결</span>
+        <span class="chip hidden" data-chip="usb">유선</span>
+        <span class="chip hidden" data-chip="bt">블루투스</span>
+        <span class="chip rx hidden" data-chip="rx" role="button" title="받기 탭 열기">수신 중</span>
+      </div>
+      <div class="leds" role="group" aria-label="PC 키보드 표시등">
+        <span class="led" data-led="num" title="Num Lock">Num</span>
+        <span class="led" data-led="caps" title="Caps Lock">Caps</span>
+        <span class="led" data-led="scroll" title="Scroll Lock">Scroll</span>
+        <span class="led" data-led="compose" title="Compose">Comp</span>
+        <span class="led" data-led="kana" title="Kana">Kana</span>
+      </div>
+    </div>
+    <div class="pc-bar">
+      <div class="pc-row">
+        <span class="target" id="targetLabel"></span>
+        <button type="button" class="ime-btn" id="imeBtn" disabled
+          title="PC 화면의 한/영 표시와 다르면 눌러서 맞추세요 (키는 입력되지 않음)">
+          한/영 전환 <span class="ime-badge" id="imeBadge">-</span>
+        </button>
+      </div>
+    </div>
 
-  <nav class="tabs" role="tablist">
-    <button role="tab" class="tab active" data-tab="send">보내기</button>
-    <button role="tab" class="tab" data-tab="keys">키보드</button>
-    <button role="tab" class="tab" data-tab="receive">받기<span class="tab-dot hidden" id="receiveDot" aria-label="새 텍스트"></span></button>
-    <button role="tab" class="tab" data-tab="settings">설정</button>
-  </nav>
+    <nav class="tabs" role="tablist">
+      <button role="tab" class="tab active" data-tab="send">보내기</button>
+      <button role="tab" class="tab" data-tab="keys">키보드</button>
+      <button role="tab" class="tab" data-tab="receive">받기<span class="tab-dot hidden" id="receiveDot" aria-label="새 텍스트"></span></button>
+      <button role="tab" class="tab" data-tab="settings">설정</button>
+    </nav>
+  </div>
 
   <main>
     <section id="tab-send" class="panel active">

@@ -40,7 +40,10 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-.top { padding: 12px 16px 4px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.top { padding: 12px 16px 0; background: var(--surface); }
+/* Connection, LEDs, the PC row and the tabs stay at the top; only the title row scrolls away */
+.sticky-top { position: sticky; top: 0; z-index: 10; }
+.status-bar { display: flow-root; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
 .title-row { display: flex; align-items: center; justify-content: space-between; }
 h1 { font-size: 20px; margin: 0; }
 
@@ -168,7 +171,6 @@ body.typing main { padding-bottom: 72px; }
 .inline-select { width: auto; padding: 6px 8px; }
 
 .host-bar {
-  position: sticky; top: 0; z-index: 10;
   padding: 10px 16px; font-size: 14px; line-height: 1.4;
   background: var(--warn-bg); color: var(--text); border-bottom: 2px solid var(--warn-border);
 }
@@ -235,9 +237,7 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 .order-last { order: 99; }
 
 /* PC row: connection, where text goes, and the 한/영 state like the Windows IME icon */
-/* Stays at the top while the page scrolls: the target PC and 한/영 are checked all the time */
 .pc-bar {
-  position: sticky; top: 0; z-index: 9;
   padding: 6px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .pc-row { display: flex; align-items: center; gap: 8px; margin: 0; min-height: 34px; }
