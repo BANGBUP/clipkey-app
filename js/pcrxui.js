@@ -47,9 +47,9 @@ export function setupPcReceive({ notify, toSendTab }) {
   let items = [] // newest first: { id, text, size, at }
   let nextId = 1
 
-  const autoCopy = $('pcRxAutoCopy')
-  autoCopy.checked = loadAutoCopy()
-  autoCopy.addEventListener('change', () => saveAutoCopy(autoCopy.checked))
+  const autoCopyBox = $('pcRxAutoCopy')
+  autoCopyBox.checked = loadAutoCopy()
+  autoCopyBox.addEventListener('change', () => saveAutoCopy(autoCopyBox.checked))
 
   function setStatus(text, progress) {
     $('pcRxStatus').textContent = text
@@ -62,11 +62,26 @@ export function setupPcReceive({ notify, toSendTab }) {
   }
 
   // "수신 N%" next to the 유선 / 블투 chips while a PC sends; a tap opens the 받기 tab.
+  // When the automatic copy is refused (Android wants a recent tap for the clipboard), the
+  // chip turns into "복사": tapping it is that tap, on whatever tab is open.
   const chip = document.querySelector('.chip[data-chip="rx"]')
-  chip.addEventListener('click', () => tab.click())
+  let pendingCopy = null
+  chip.addEventListener('click', () => {
+    if (pendingCopy === null) return tab.click()
+    const text = pendingCopy
+    pendingCopy = null
+    setChip(null)
+    copy(text, 'PC에서 받은 텍스트를 복사했습니다')
+  })
   function setChip(progress) {
+    if (progress !== null) pendingCopy = null
     chip.classList.toggle('hidden', progress === null)
     if (progress !== null) chip.textContent = `수신 ${progress}`
+  }
+  function offerCopy(text) {
+    pendingCopy = text
+    chip.textContent = '눌러서 복사'
+    chip.classList.remove('hidden')
   }
 
   const markUnseen = () => $('receiveDot').classList.toggle('hidden', tab.classList.contains('active'))
@@ -80,6 +95,17 @@ export function setupPcReceive({ notify, toSendTab }) {
     } catch (error) {
       notify(`복사하지 못했습니다(${error.message}). 받기 탭의 "복사" 버튼을 누르세요`)
       return false
+    }
+  }
+
+  // Received with auto-copy on: no tap came with it, which the phone may refuse.
+  async function autoCopy(text) {
+    try {
+      await navigator.clipboard.writeText(text)
+      notify('PC에서 텍스트를 받아 클립보드에 복사했습니다')
+    } catch {
+      offerCopy(text)
+      notify('PC에서 텍스트를 받았습니다. 위의 "눌러서 복사"를 누르면 복사됩니다')
     }
   }
 
@@ -141,7 +167,7 @@ export function setupPcReceive({ notify, toSendTab }) {
     setItems([{ id: nextId++, text, file: null, size, compressed, at: new Date() }, ...items].slice(0, MAX_ITEMS))
     setStatus(`완료: ${charCount(text)}자를 받았습니다`)
     markUnseen()
-    if (autoCopy.checked) await copy(text, 'PC에서 텍스트를 받아 클립보드에 복사했습니다')
+    if (autoCopyBox.checked) await autoCopy(text)
     else notify('PC에서 텍스트를 받았습니다')
   }
 
