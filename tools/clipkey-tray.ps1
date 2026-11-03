@@ -7,22 +7,30 @@ $sendScript = Join-Path $PSScriptRoot 'clipkey-send.ps1'
 $recvScript = Join-Path $PSScriptRoot 'clipkey-recv.ps1'
 $logFile = Join-Path $env:TEMP 'clipkey-tray.log'
 $startupLink = Join-Path ([Environment]::GetFolderPath('Startup')) 'ClipKey 보내기.lnk'
+$desktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'ClipKey 트레이.lnk'
 $SlowDelayMs = 20
 if ($Uninstall) {
-    Remove-Item $startupLink -ErrorAction SilentlyContinue
+    Remove-Item $startupLink, $desktopLink -ErrorAction SilentlyContinue
     Write-Host '자동 실행을 껐습니다. 떠 있는 아이콘은 오른쪽 클릭 > 끝내기로 닫으세요.' -ForegroundColor Green
     exit 0
 }
-if ($Install) {
+function New-TrayLink([string]$path) {
     $shell = New-Object -ComObject WScript.Shell
-    $link = $shell.CreateShortcut($startupLink)
+    $link = $shell.CreateShortcut($path)
     $link.TargetPath = (Get-Command powershell.exe).Source
     $link.Arguments = '-WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}"' -f $PSCommandPath
     $link.WorkingDirectory = $PSScriptRoot
     $link.WindowStyle = 7
+    $link.IconLocation = "$env:SystemRoot\System32\input.dll,1"
     $link.Save()
+    $link
+}
+if ($Install) {
+    $link = New-TrayLink $startupLink
+    [void](New-TrayLink $desktopLink)
     Start-Process $link.TargetPath -ArgumentList $link.Arguments -WindowStyle Hidden
     Write-Host '로그인할 때 자동으로 트레이에 뜨도록 등록했고, 지금도 띄웠습니다.' -ForegroundColor Green
+    Write-Host "바탕 화면의 'ClipKey 트레이' 아이콘을 작업 표시줄로 끌어다 놓으면, 트레이가 꺼졌을 때 눌러서 다시 띄울 수 있습니다." -ForegroundColor Green
     exit 0
 }
 $mutex = New-Object System.Threading.Mutex($false, 'ClipKeyTray')
