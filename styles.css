@@ -1,33 +1,44 @@
+/* 화면 테마 (js/theme.js; index.html sets data-theme before first paint).
+   Light: soft white cards on pale grey, deep blue. Dark: navy with a teal accent. Colours and depth only, no layout. */
 :root {
-  --bg: #f6f8fa;
+  --bg: #eef2f7;
   --surface: #ffffff;
-  --text: #1f2328;
-  --muted: #656d76;
-  --border: #d0d7de;
-  --primary: #1f6feb;
+  --text: #0f1f3d;
+  --muted: #5b6b82;
+  --border: #d5deea;
+  --primary: #1e4fd8;
+  --primary-2: #2f63ee;
   --primary-text: #ffffff;
+  --primary-glow: rgb(30 79 216 / 0.28);
   --danger: #cf222e;
   --ok: #1a7f37;
   --warn: #9a6700;
   --warn-bg: #fff8c5;
   --warn-border: #d4a72c;
-  --radius: 12px;
+  --press: #e3e9f2;
+  --shadow: 0 1px 2px rgb(15 31 61 / 0.06), 0 2px 8px rgb(15 31 61 / 0.05);
+  --radius: 14px;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --text: #e6edf3;
-    --muted: #8d96a0;
-    --border: #30363d;
-    --primary: #2f81f7;
-    --danger: #f85149;
-    --ok: #3fb950;
-    --warn: #d29922;
-    --warn-bg: #3b2e00;
-    --warn-border: #9e6a03;
-  }
+:root[data-theme="dark"] {
+  --bg: #0a141d;
+  --surface: #111e2a;
+  --text: #e3f1f4;
+  --muted: #8aa3ad;
+  --border: #23384a;
+  --primary: #2dd4bf;
+  --primary-2: #5eead4;
+  --primary-text: #042723;
+  --primary-glow: rgb(45 212 191 / 0.35);
+  --danger: #f87171;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --warn-bg: #3a2c06;
+  --warn-border: #a16207;
+  --press: #1a2c3c;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.03);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -319,3 +330,31 @@ details.phrases[open] > summary { margin-bottom: 4px; }
 
 /* modal.js: in-app confirm / prompt (keeps the message's line breaks) */
 .modal-message { white-space: pre-line; }
+
+/* ---- 화면 테마 skin: depth, accent and press states (no size or position changes) ---- */
+.top, .pc-bar, .tabs { box-shadow: none; }
+.sticky-top { box-shadow: 0 2px 10px rgb(0 0 0 / 0.06); }
+.btn, .key, .phrase-main, .ime-btn, .target-btn, .day-btn,
+textarea, select, .text-input, .num, .time-input,
+.host-row, .rx-item, .usb-mode, .theme-pick, .cmd { box-shadow: var(--shadow); }
+.btn, .key, .phrase-main, .ime-btn, .target-btn, .day-btn, .tab { transition: background-color .12s, box-shadow .12s, border-color .12s, color .12s; }
+.btn:active, .phrase-main:active, .ime-btn:active, .key:active { background: var(--press); }
+.btn.primary {
+  background: linear-gradient(180deg, var(--primary-2), var(--primary));
+  border-color: var(--primary);
+  box-shadow: 0 2px 10px var(--primary-glow);
+}
+.btn.primary:active { background: var(--primary); }
+.key.mod.locked { box-shadow: 0 0 10px var(--primary-glow); }
+.tab.active { color: var(--primary); }
+textarea:focus, select:focus, .text-input:focus, .num:focus, .time-input:focus {
+  outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-glow);
+}
+.btn:focus-visible, .key:focus-visible, .tab:focus-visible, .phrase-main:focus-visible {
+  outline: 2px solid var(--primary); outline-offset: 2px;
+}
+.theme-pick { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin: 0; }
+.theme-pick legend { font-weight: 600; padding: 0 4px; }
+input[type="checkbox"], input[type="radio"], input[type="range"], progress { accent-color: var(--primary); }
+:root[data-theme="dark"] .chip.on, :root[data-theme="dark"] .led.on { box-shadow: 0 0 6px rgb(52 211 153 / 0.25); }
+:root[data-theme="dark"] .ime-badge:not(.english) { box-shadow: 0 0 8px var(--primary-glow); }

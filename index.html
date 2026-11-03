@@ -3,7 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1f6feb">
+  <meta name="theme-color" content="#ffffff">
+  <script>
+    // Apply the saved 화면 테마 before first paint (no flash). Same rule as js/theme.js.
+    (function () {
+      var t = null
+      try { t = localStorage.getItem('clipkey.theme') } catch (e) {}
+      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      document.documentElement.dataset.theme = t
+      document.querySelector('meta[name="theme-color"]').content = t === 'dark' ? '#111e2a' : '#ffffff'
+    })()
+  </script>
   <title>ClipKey</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -215,6 +225,14 @@
         </div>
         <p class="hint">설정 코드가 있으면 다른 폰을 BOOT 버튼 없이 등록할 수 있습니다. 0000처럼 쉬운 코드는 피하세요.</p>
       </div>
+      <fieldset class="field theme-pick">
+        <legend>화면 테마</legend>
+        <div class="row">
+          <label class="check grow"><input type="radio" name="theme" value="light"> 밝게</label>
+          <label class="check grow"><input type="radio" name="theme" value="dark"> 어둡게</label>
+        </div>
+        <p class="hint">고르기 전에는 폰의 다크 모드 설정을 따릅니다. 이 폰에만 저장됩니다.</p>
+      </fieldset>
       <div class="field">
         <strong>문제 보고</strong>
         <p class="hint">잘 안 될 때 증상과 함께 보내 주세요. 전화번호·증상·앱과 기기 버전·앱 로그가 관리자에게 전송됩니다. 보낸 글의 내용은 로그에 남지 않습니다.</p>

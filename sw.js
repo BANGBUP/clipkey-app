@@ -1,6 +1,6 @@
 // Offline cache for the app shell. Network first so updates show up immediately.
 // scripts/build-site.sh stamps CACHE per deploy, so every release installs a new worker.
-const CACHE = 'clipkey-1.0.88-8be480c'
+const CACHE = 'clipkey-1.0.89-fa735fc'
 const SHELL = [
   './',
   'index.html',
@@ -52,6 +52,7 @@ const SHELL = [
   'js/firmware.js',
   'js/fwui.js',
   'js/version.js',
+  'js/theme.js',
 ]
 // PC scripts typed by "PC 필수 스크립트": best effort (the local dev server has no tools/).
 const TOOLS = ['tools/clipkey-recv.ps1', 'tools/clipkey-send.ps1', 'tools/clipkey-tray.ps1']

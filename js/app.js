@@ -13,6 +13,7 @@ import { setupTypingBar } from './typingbar.js'
 import { createWakeLock } from './wakelock.js'
 import { setupReport } from './report.js'
 import { setupFactoryReset } from './factoryreset.js'
+import { setupTheme } from './theme.js'
 import { loadSettings, saveSettings, validateSettings, settingsFrames, pacingOf, wireTypingSettings } from './typingsettings.js'
 import { createEventFilter, formatDeviceEvent } from './devevents.js'
 
@@ -529,6 +530,7 @@ function init() {
   awakeSchedule = setupAwakeSchedule({ client, notify })
   keepAwakePcs = setupKeepAwakePcs({ client, notify, getHosts: () => hostsUi.hosts, refreshHosts: () => hostsUi.refresh() })
   setupDebug({ notify })
+  setupTheme()
   setupReport({ $, notify, log, getLog: () => appLog.lines().join('\n'), getContext: reportContext })
   setupFactoryReset({
     $,
