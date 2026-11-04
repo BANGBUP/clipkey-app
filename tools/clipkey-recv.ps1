@@ -15,22 +15,25 @@ public static uint Crc32(byte[] data, int count) {
     for (int i = 0; i < count; i++) crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
     return crc ^ 0xFFFFFFFFu;
 }
+public static int Skipped, BadAt;
 public static byte[] FromChords(string body, int byteCount) {
+    Skipped = 0; BadAt = -1;
     const string keys = "abcdefghijklmnopqrstuvwxyz0123456789-=;',./";
     string text = body.ToLowerInvariant();
     byte[] output = new byte[byteCount];
     string prev = "", group = "";
     int acc = 0, bits = 0, n = 0, p = 0;
-    foreach (char ch in text) {
+    for (int i = 0; i < text.Length; i++) {
+        char ch = text[i];
         if (group.Length == 6) { prev = group; group = ""; }
-        if (keys.IndexOf(ch) < 0) return null;
-        if (prev.IndexOf(ch) >= 0 || group.IndexOf(ch) >= 0) continue;
+        if (keys.IndexOf(ch) < 0) { BadAt = i; return null; }
+        if (prev.IndexOf(ch) >= 0 || group.IndexOf(ch) >= 0) { Skipped++; continue; }
         int v = 0;
         foreach (char k in keys) {
             if (k == ch) break;
             if (prev.IndexOf(k) < 0 && group.IndexOf(k) < 0) v++;
         }
-        if (v > 31) return null;
+        if (v > 31) { BadAt = i; return null; }
         p++;
         group += ch;
         acc = (acc << 5) | v;
@@ -187,10 +190,24 @@ function Restore-Payload([byte[]]$payload, [string]$took) {
 function Get-WantChars([bool]$chord, [int]$n) {
     if ($chord) { [int][math]::Ceiling($n * 8 / 5) } else { $n }
 }
+function Save-Raw([string]$typed) {
+    try {
+        $dir = 'C:\temp'
+        [void][IO.Directory]::CreateDirectory($dir)
+        $path = Join-Path $dir ("clipkey-recv-error-{0:yyyyMMdd-HHmmss}.txt" -f (Get-Date))
+        [IO.File]::WriteAllText($path, $typed, [Text.Encoding]::UTF8)
+        $path
+    } catch {
+        '(저장 실패)'
+    }
+}
+function Set-Error([string]$reason, [string]$typed) {
+    Set-Status ("오류: {0} · 받은 글자: {1}" -f $reason, (Save-Raw $typed)) 'Red'
+}
 function Restore-Typed([string]$typed, [string]$took = '') {
     $m = [regex]::Match($typed, '\[(CK1|(?i:ck2))\.(\d+)\.([^\]]*)\]')
     if (-not $m.Success) {
-        Set-Status '오류: 형식' 'Red'
+        Set-Error '형식' $typed
         return
     }
     $chord = $m.Groups[1].Value -ne 'CK1'
@@ -199,7 +216,7 @@ function Restore-Typed([string]$typed, [string]$took = '') {
     [void][int]::TryParse($m.Groups[2].Value, [ref]$n)
     $want = Get-WantChars $chord $n
     if ($data.Length -lt $want -or (-not $chord -and $data.Length -ne $want)) {
-        Set-Status ("오류: 글자 수 {0}/{1}" -f $data.Length, $want) 'Red'
+        Set-Error ("글자 수 {0}/{1}" -f $data.Length, $want) $typed
         return
     }
     $all = $null
@@ -210,12 +227,17 @@ function Restore-Typed([string]$typed, [string]$took = '') {
     }
     if ($null -eq $all) {
         $reason = if ($data.Length -ne $want) { "글자 수 {0}/{1}" -f $data.Length, $want } else { '글자 깨짐' }
-        Set-Status ("오류: {0}" -f $reason) 'Red'
+        if ($chord) {
+            $reason += ", 반복 건너뜀 {0}" -f [ClipKey.Unpack]::Skipped
+            $bad = [ClipKey.Unpack]::BadAt
+            if ($bad -ge 0) { $reason += ", {0}번째 글자 '{1}' 틀림" -f ($bad + 1), $data[$bad] }
+        }
+        Set-Error $reason $typed
         return
     }
     $n = $all.Length - 4
     if ($n -lt 1 -or [ClipKey.Unpack]::Crc32($all, $n) -ne [BitConverter]::ToUInt32($all, $n)) {
-        Set-Status '오류: 확인값' 'Red'
+        Set-Error '확인값' $typed
         return
     }
     $payload = New-Object byte[] $n
