@@ -88,7 +88,7 @@ function render(root) {
   root.setAttribute('aria-label', 'PC 키보드')
   root.replaceChildren(
     section('', [mods]),
-    section('단축키', [shortcuts.slice(0, 6), shortcuts.slice(6)]),
+    section('단축키', [shortcuts.slice(0, 4), shortcuts.slice(4, 8), shortcuts.slice(8)]),
     section('기능 키', [...NAV_ROWS, ...F_ROWS].map(keyButtons)),
     section('문자 키 (한글 모드면 PC가 한글로 조합)', [...MAIN_ROWS.map(keyButtons), [space, ...keyButtons(['backspace', 'enter'])]], 'vk-row vk-main'),
   )

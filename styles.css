@@ -358,3 +358,34 @@ textarea:focus, select:focus, .text-input:focus, .num:focus, .time-input:focus {
 input[type="checkbox"], input[type="radio"], input[type="range"], progress { accent-color: var(--primary); }
 :root[data-theme="dark"] .chip.on, :root[data-theme="dark"] .led.on { box-shadow: 0 0 6px rgb(52 211 153 / 0.25); }
 :root[data-theme="dark"] .ime-badge:not(.english) { box-shadow: 0 0 8px var(--primary-glow); }
+
+/* ---- detail fixes: narrow phones and large system text (same arrangement, nothing squeezed) ---- */
+label.row { align-items: center; }
+.btn, .hint, .check { word-break: keep-all; overflow-wrap: anywhere; } /* Korean wraps between words */
+.row > span.grow { min-width: 0; }
+.num { width: 4.5em; flex: none; }
+.unit { flex: none; min-width: 3em; white-space: nowrap; font-size: 14px; color: var(--muted); }
+/* 누를 키: the label keeps one line, the list takes the rest */
+.row:has(> .inline-select) > span { flex: none; white-space: nowrap; }
+.row > .inline-select { flex: 1 1 0; min-width: 0; }
+/* 시간대 rows: times shrink, the ✕ button stays inside the screen */
+.range-row > input[type="checkbox"] { flex: none; }
+.range-times { flex: 1 1 auto; min-width: 0; }
+.range-times > span { flex: none; }
+.range-times .time-input { flex: 1 1 0; min-width: 0; width: 0; padding: 4px 6px; font-size: 15px; }
+/* the field itself opens the picker on phones: the clock icon only took room */
+.time-input::-webkit-calendar-picker-indicator { display: none; }
+.range-remove { flex: none; padding: 4px 10px; }
+/* 입력 속도: "15 ms" on one line */
+.timing-grid .val { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* 키보드: shortcut labels may take two lines instead of being cut */
+.key.small-label { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; text-align: center; line-height: 1.2; padding: 8px 2px; }
+.vk-row:not(.vk-main) .key:not(.small-label) { font-size: 14px; }
+/* Long explanations folded under 자세히 */
+details.more > summary {
+  width: fit-content; padding: 2px 0; font-size: 13px; color: var(--primary); cursor: pointer; list-style: none;
+}
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::after { content: " ▾"; }
+details.more[open] > summary::after { content: " ▴"; }
+details.more > .hint { margin-top: 4px; }

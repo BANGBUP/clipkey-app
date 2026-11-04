@@ -73,7 +73,7 @@
       </div>
       <button id="pasteSendBtn" class="btn wide">클립보드 내용 바로 타이핑</button>
       <div class="row">
-        <button id="packSendBtn" class="btn grow">위 텍스트를 PC 트레이로 압축 보내기</button>
+        <button id="packSendBtn" class="btn grow">트레이로 압축 보내기</button>
         <button id="packFileBtn" class="btn">파일 보내기</button>
       </div>
       <input type="file" id="packFileInput" class="hidden">
@@ -141,8 +141,8 @@
       <div class="field">
         <label class="check"><input type="checkbox" id="keepAwake"> <strong>화면보호기 방지</strong></label>
         <label class="row">
-          <span class="grow">입력이 없을 때 누르는 간격</span>
-          <input type="number" id="keepAwakeMin" min="0.5" max="60" step="0.5" value="4" inputmode="decimal" class="num"> 분
+          <span class="grow">입력 없으면 누르는 간격</span>
+          <input type="number" id="keepAwakeMin" min="0.5" max="60" step="0.5" value="4" inputmode="decimal" class="num"><span class="unit">분</span>
         </label>
         <label class="row">
           <span class="grow">누를 키</span>
@@ -155,29 +155,29 @@
           <div id="awakeRanges" class="awake-ranges"></div>
           <button type="button" id="awakeRangeAdd" class="btn small">+ 시간대 추가</button>
           <p class="hint" id="awakeScheduleSummary"></p>
-          <p class="hint">예: 09:00~12:00, 13:00~18:00으로 두면 점심시간과 퇴근 후에는 누르지 않습니다. 기기에는 시계가 없어 폰이 연결될 때 현재 시각을 알려 줍니다. 기기가 꺼졌다 켜진 뒤 폰이 아직 연결되지 않았으면 시각을 몰라 하루 종일 작동합니다. (펌웨어 1.0.32 이상)</p>
+          <details class="more"><summary>시간대 설명</summary><p class="hint">예: 09:00~12:00, 13:00~18:00으로 두면 점심시간과 퇴근 후에는 누르지 않습니다. 기기에는 시계가 없어 폰이 연결될 때 현재 시각을 알려 줍니다. 기기가 꺼졌다 켜진 뒤 폰이 아직 연결되지 않았으면 시각을 몰라 하루 종일 작동합니다. (펌웨어 1.0.32 이상)</p></details>
         </div>
-        <p class="hint">PC에 이 시간 동안 키 입력이 없으면 기기가 선택한 키를 누릅니다. 유선·블루투스로 PC가 여러 대 연결되어 있으면 긴 글을 입력하는 중에도 입력 대상이 아닌 PC에 같은 간격으로 눌러 모두 깨어 있게 하고, "보낼 PC"에서 PC별로 끌 수 있습니다(펌웨어 1.0.31 이상). F키는 리눅스 터미널에서 ~ 같은 글자로 찍힐 수 있고, Shift는 Windows에서 5번째마다 "고정 키" 창이 뜰 수 있습니다(Windows 설정 → 접근성 → 키보드 → 고정 키 바로 가기를 끄면 해결). F13~F24는 거의 모든 프로그램이 무시하는 키이고, 일부 보안 프로그램이 F키를 입력으로 치지 않으면 Shift를 고르세요. 화면보호기 대기 시간보다 짧게 정하세요. 설정은 기기에 저장되어 폰 앱을 닫아도, 기기를 껐다 켜도 계속 동작합니다.</p>
+        <details class="more"><summary>화면보호기 방지 설명</summary><p class="hint">PC에 이 시간 동안 키 입력이 없으면 기기가 선택한 키를 누릅니다. 유선·블루투스로 PC가 여러 대 연결되어 있으면 긴 글을 입력하는 중에도 입력 대상이 아닌 PC에 같은 간격으로 눌러 모두 깨어 있게 하고, "보낼 PC"에서 PC별로 끌 수 있습니다(펌웨어 1.0.31 이상). F키는 리눅스 터미널에서 ~ 같은 글자로 찍힐 수 있고, Shift는 Windows에서 5번째마다 "고정 키" 창이 뜰 수 있습니다(Windows 설정 → 접근성 → 키보드 → 고정 키 바로 가기를 끄면 해결). F13~F24는 거의 모든 프로그램이 무시하는 키이고, 일부 보안 프로그램이 F키를 입력으로 치지 않으면 Shift를 고르세요. 화면보호기 대기 시간보다 짧게 정하세요. 설정은 기기에 저장되어 폰 앱을 닫아도, 기기를 껐다 켜도 계속 동작합니다.</p></details>
       </div>
       <div class="field">
         <strong>입력 속도</strong>
         <div class="timing-grid">
           <span></span><span class="col-head">Windows 등</span><span class="col-head">iPad / Mac</span>
           <span class="row-head">키 입력 간격</span>
-          <label><output id="delayOut">15</output> ms<input type="range" id="delay" min="2" max="40" step="1" value="15" aria-label="키 입력 간격 (Windows 등)"></label>
-          <label><output id="appleDelayOut">20</output> ms<input type="range" id="appleDelay" min="2" max="40" step="1" value="20" aria-label="키 입력 간격 (iPad / Mac)"></label>
-          <span class="row-head">한/영 전환 후 대기</span>
-          <label><output id="settleOut">30</output> ms<input type="range" id="settle" min="0" max="500" step="10" value="30" aria-label="한/영 전환 후 대기 (Windows 등)"></label>
-          <label><output id="appleSettleOut">30</output> ms<input type="range" id="appleSettle" min="0" max="500" step="10" value="30" aria-label="한/영 전환 후 대기 (iPad / Mac)"></label>
+          <label><span class="val"><output id="delayOut">15</output> ms</span><input type="range" id="delay" min="2" max="40" step="1" value="15" aria-label="키 입력 간격 (Windows 등)"></label>
+          <label><span class="val"><output id="appleDelayOut">20</output> ms</span><input type="range" id="appleDelay" min="2" max="40" step="1" value="20" aria-label="키 입력 간격 (iPad / Mac)"></label>
+          <span class="row-head">한/영 후 대기</span>
+          <label><span class="val"><output id="settleOut">30</output> ms</span><input type="range" id="settle" min="0" max="500" step="10" value="30" aria-label="한/영 전환 후 대기 (Windows 등)"></label>
+          <label><span class="val"><output id="appleSettleOut">30</output> ms</span><input type="range" id="appleSettle" min="0" max="500" step="10" value="30" aria-label="한/영 전환 후 대기 (iPad / Mac)"></label>
         </div>
-        <p class="hint">키 입력 간격은 작을수록 빠릅니다. 글자가 빠지거나 한글이 풀어지면 늘리세요(아이패드는 15ms에서 깨지고 20ms에서 정상이었음). 전환 직후 글자가 반대 언어로 찍히면(예: Cㅣaude) 한/영 대기를 늘리세요. iPad / Mac 쪽 한/영 대기는 펌웨어 1.0.25부터 따로 적용됩니다.</p>
+        <details class="more"><summary>입력 속도 설명</summary><p class="hint">키 입력 간격은 작을수록 빠릅니다. 글자가 빠지거나 한글이 풀어지면 늘리세요(아이패드는 15ms에서 깨지고 20ms에서 정상이었음). 전환 직후 글자가 반대 언어로 찍히면(예: Cㅣaude) 한/영 대기를 늘리세요. iPad / Mac 쪽 한/영 대기는 펌웨어 1.0.25부터 따로 적용됩니다.</p></details>
       </div>
       <div class="field">
         <strong>긴 글 숨 고르기</strong>
-        <label class="row"><span class="grow">쉬는 간격</span><input type="number" id="breathEvery" min="0" max="5000" step="100" inputmode="numeric" class="num"> 자마다</label>
-        <label class="row"><span class="grow">쉬는 시간</span><input type="number" id="breathMs" min="0" max="10" step="0.5" inputmode="decimal" class="num"> 초</label>
-        <label class="row"><span class="grow">1,000자마다 키 간격 늘리기</span><input type="number" id="slowStepMs" min="0" max="10" step="1" inputmode="numeric" class="num"> ms</label>
-        <p class="hint">문서가 길어지면 메모장 같은 프로그램이 느려져 한글이 깨지거나 빠질 수 있습니다. 긴 글을 보낼 때 중간중간 쉬고, 뒤로 갈수록 조금씩 천천히 입력해 PC가 따라올 시간을 줍니다(늘어나는 간격은 최대 20ms). 0이면 끕니다. 펌웨어 1.0.25 이상에서 동작합니다.</p>
+        <label class="row"><span class="grow">쉬는 간격</span><input type="number" id="breathEvery" min="0" max="5000" step="100" inputmode="numeric" class="num"><span class="unit">자마다</span></label>
+        <label class="row"><span class="grow">쉬는 시간</span><input type="number" id="breathMs" min="0" max="10" step="0.5" inputmode="decimal" class="num"><span class="unit">초</span></label>
+        <label class="row"><span class="grow">1,000자마다 간격 늘림</span><input type="number" id="slowStepMs" min="0" max="10" step="1" inputmode="numeric" class="num"><span class="unit">ms</span></label>
+        <details class="more"><summary>숨 고르기 설명</summary><p class="hint">문서가 길어지면 메모장 같은 프로그램이 느려져 한글이 깨지거나 빠질 수 있습니다. 긴 글을 보낼 때 중간중간 쉬고, 뒤로 갈수록 조금씩 천천히 입력해 PC가 따라올 시간을 줍니다(늘어나는 간격은 최대 20ms). 0이면 끕니다. 펌웨어 1.0.25 이상에서 동작합니다.</p></details>
       </div>
       <div class="field">
         <div>기기가 알고 있는 PC 입력 모드: <strong id="imeBelief">-</strong></div>
@@ -191,7 +191,7 @@
           <button id="nicknameSaveBtn" class="btn">저장</button>
         </div>
         <div class="row"><span class="grow hint">기기 고유 번호</span><span id="deviceIdInfo" class="hint">-</span></div>
-        <p class="hint">ClipKey에 저장되고 기기 이름이 "ClipKey-별명"으로 바뀌어, 연결할 때 기기 선택 목록과 PC·태블릿의 블루투스 목록에서 여러 대를 구분할 수 있습니다. 최대 한글 약 10자이고, 선택 목록에는 앞의 한글 4자(영문 14자)까지 보입니다. 이미 페어링한 PC는 다시 페어링해야 새 이름으로 보일 수 있습니다. (펌웨어 1.0.26 이상)</p>
+        <details class="more"><summary>별명 설명</summary><p class="hint">ClipKey에 저장되고 기기 이름이 "ClipKey-별명"으로 바뀌어, 연결할 때 기기 선택 목록과 PC·태블릿의 블루투스 목록에서 여러 대를 구분할 수 있습니다. 최대 한글 약 10자이고, 선택 목록에는 앞의 한글 4자(영문 14자)까지 보입니다. 이미 페어링한 PC는 다시 페어링해야 새 이름으로 보일 수 있습니다. (펌웨어 1.0.26 이상)</p></details>
       </div>
       <div class="field">
         <strong>PC 블루투스 연결</strong>

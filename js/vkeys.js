@@ -93,7 +93,7 @@ export const SHORTCUTS = Object.freeze(
     ['desktop', '바탕화면', MOD.LGUI, 'd', true],
     ['lock', 'PC 잠금', MOD.LGUI, 'l', true],
     ['start', '시작(Win)', MOD.LGUI, null, true],
-    ['ctrlaltdel', 'Ctrl+Alt+Del', MOD.LCTRL | MOD.LALT, 'delete', true],
+    ['ctrlaltdel', 'Ctrl+Alt+​Del', MOD.LCTRL | MOD.LALT, 'delete', true], // ​: may wrap before Del
   ].map(([id, label, mod, key, windowsOnly = false]) => Object.freeze({ id, label, mod, key, windowsOnly })),
 )
 
