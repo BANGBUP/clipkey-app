@@ -1,6 +1,6 @@
 // Offline cache for the app shell. Network first so updates show up immediately.
 // scripts/build-site.sh stamps CACHE per deploy, so every release installs a new worker.
-const CACHE = 'clipkey-1.0.99-fbfac58'
+const CACHE = 'clipkey-1.1.0-d48d648'
 const SHELL = [
   './',
   'index.html',
@@ -59,7 +59,7 @@ const SHELL = [
   'js/theme.js',
 ]
 // PC scripts typed by "PC 필수 스크립트": best effort (the local dev server has no tools/).
-const TOOLS = ['tools/clipkey-recv.ps1', 'tools/clipkey-send.ps1', 'tools/clipkey-tray.ps1']
+const TOOLS = ['tools/clipkey-recv.ps1', 'tools/clipkey-send.ps1', 'tools/clipkey-tray.ps1', 'tools/clipkey-shortcut.ps1']
 
 self.addEventListener('install', (event) => {
   // cache: 'reload' skips the HTTP cache, so a new worker never stores last deploy's files.

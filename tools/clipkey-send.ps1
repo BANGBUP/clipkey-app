@@ -10,7 +10,7 @@
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
-$ClipKeyVersion = '1.0.99'
+$ClipKeyVersion = '1.1.0'
 $PartHeader = 9
 $PartGapMs = 500
 Add-Type -Namespace ClipKey -Name LedKeys -MemberDefinition @'

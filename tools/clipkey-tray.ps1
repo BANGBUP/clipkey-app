@@ -3,7 +3,7 @@
     [switch]$Uninstall
 )
 $ErrorActionPreference = 'Stop'
-$ClipKeyVersion = '1.0.99'
+$ClipKeyVersion = '1.1.0'
 $sendScript = Join-Path $PSScriptRoot 'clipkey-send.ps1'
 $recvScript = Join-Path $PSScriptRoot 'clipkey-recv.ps1'
 $logFile = Join-Path $env:TEMP 'clipkey-tray.log'
@@ -92,7 +92,17 @@ $miSlow = New-Object Windows.Forms.ToolStripMenuItem ('천천히 보내기 (깨�
 $miSlow.CheckOnClick = $true
 $miLog = New-Object Windows.Forms.ToolStripMenuItem '마지막 기록 보기'
 $miQuit = New-Object Windows.Forms.ToolStripMenuItem '끝내기'
-$miVersion = New-Object Windows.Forms.ToolStripMenuItem "버전 $ClipKeyVersion"
+function Get-ScriptVersion([string]$path) {
+    try {
+        $m = Select-String -Path $path -Pattern "^\`$ClipKeyVersion = '([^']*)'" -List
+        if ($m) { return $m.Matches[0].Groups[1].Value }
+    } catch {}
+    '없음'
+}
+function Get-VersionText {
+    "트레이 {0} · 보내기 {1} · 받기 {2}" -f $ClipKeyVersion, (Get-ScriptVersion $sendScript), (Get-ScriptVersion $recvScript)
+}
+$miVersion = New-Object Windows.Forms.ToolStripMenuItem (Get-VersionText)
 $miVersion.Enabled = $false
 [void]$menu.Items.AddRange(@($miClip, $miFile, $miResume, $miParts, $miStop, (New-Object Windows.Forms.ToolStripSeparator), $miRecv, (New-Object Windows.Forms.ToolStripSeparator), $miSlow, $miLog, $miQuit, $miVersion))
 $tray.ContextMenuStrip = $menu
@@ -327,7 +337,7 @@ $miClip.Add_Click({ [void](Start-Send '') })
 $tray.Add_MouseDoubleClick({ param($s, $e) if ($e.Button -eq 'Left') { [void](Start-Send '') } })
 $miFile.Add_Click({
     $dialog = New-Object Windows.Forms.OpenFileDialog
-    $dialog.Title = 'ClipKey로 보낼 파일 (크면 조각으로 나눠 보냄, 32KB에 약 13분)'
+    $dialog.Title = 'ClipKey 보내기 {0}: 보낼 파일 (크면 조각으로 나눠 보냄, 32KB에 약 13분)' -f (Get-ScriptVersion $sendScript)
     if ($dialog.ShowDialog() -eq 'OK') { [void](Start-Send (" -Path '{0}'" -f $dialog.FileName.Replace("'", "''"))) }
 })
 function Send-Parts([string]$what, [string]$label, [string]$prefill, [string]$title) {
@@ -373,7 +383,7 @@ function Update-ResumeMenu {
         [void]$miResume.DropDownItems.Add($item)
     }
 }
-$menu.Add_Opening({ Update-ResumeMenu })
+$menu.Add_Opening({ Update-ResumeMenu; $miVersion.Text = Get-VersionText })
 Update-ResumeMenu
 $miStop.Add_Click({ Stop-Send 150 })
 $miRecv.Add_Click({
