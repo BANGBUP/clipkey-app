@@ -260,10 +260,11 @@ export function setupPcReceive({ notify, toSendTab }) {
       const percent = Math.floor((100 * event.received) / Math.max(event.total, 1))
       if (event.starting && Date.now() - lastPieceAt > NEXT_FRAME_MS) activeKey = null
       const set = active()
-      const piece = set ? `조각 ${Math.min(haveOf(set) + 1, set.count)}/${set.count} ` : ''
-      const name = set ? `${short(setName(set))} ` : ''
-      setStatus(`받는 중 ${name}${piece}${percent}% (${event.received}/${event.total}바이트)`, event)
-      setChip(`${piece}${percent}%`)
+      // Which piece is coming is only known once it is in (its number is inside), so: how many
+      // are in so far, and how far the one coming now is.
+      const have = set ? `${short(setName(set))} ${haveOf(set)}/${set.count}조각 받음 · 지금 조각 ` : ''
+      setStatus(`받는 중 ${have}${percent}% (${event.received}/${event.total}바이트)`, event)
+      setChip(set ? `${haveOf(set)}/${set.count} +${percent}%` : `${percent}%`)
       if (event.starting) markUnseen()
     } else if (event.type === 'part') {
       onPart(event)
