@@ -92,12 +92,23 @@ export function parsePart(bytes) {
   return part.count >= 1 && part.index < part.count ? part : null
 }
 
+/** CRC-16/CCITT (poly 0x1021, init 0xFFFF), as clipkey-send.ps1 Get-Crc16. */
+export function crc16(bytes) {
+  let crc = 0xffff
+  for (const b of bytes) {
+    crc ^= b << 8
+    for (let i = 0; i < 8; i++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff
+  }
+  return crc
+}
+
 /** No pieces collected. */
 export const EMPTY_PARTS = Object.freeze({ id: -1, count: 0, pieces: Object.freeze([]) })
 
 /**
  * Adds one piece. A different id (or count) starts a new collection. Returns
- * { parts, have, missing (1-based numbers before the newest piece), payload (when complete) }.
+ * { parts, have, missing (1-based numbers before the newest piece), payload (when complete),
+ *   mixed (complete but not the content the id names: dropped) }.
  */
 export function addPart(parts, { id, index, count, data }) {
   const same = parts.id === id && parts.count === count
@@ -108,6 +119,9 @@ export function addPart(parts, { id, index, count, data }) {
   if (have === count) {
     const payload = new Uint8Array(pieces.reduce((n, p) => n + p.length, 0))
     pieces.reduce((at, p) => (payload.set(p, at), at + p.length), 0)
+    // The id is the payload's CRC: pieces kept from another content with the same id and count
+    // (kept for a day for resuming) would join into garbage.
+    if (crc16(payload) !== id) return { parts: EMPTY_PARTS, have, missing: [], payload: null, mixed: true }
     return { parts: EMPTY_PARTS, have, missing: [], payload }
   }
   const newest = pieces.reduce((last, p, i) => (p ? i : last), -1)
@@ -130,6 +144,44 @@ export function partsToResend(parts, damaged = null) {
   const failedAt = sameSet ? hint.index : newest + 1
   const upTo = Math.min(Math.max(newest, failedAt), parts.count - 1)
   return parts.pieces.slice(0, upTo + 1).flatMap((p, i) => (p ? [] : [i + 1]))
+}
+
+/** Every piece number (1-based) not yet received: what '이어 보내기' must still send. */
+export const partsLeft = (parts) => parts.pieces.flatMap((p, i) => (p ? [] : [i + 1]))
+
+/** [3, 5, 8, 9, 10] -> "3,5,8-10" (what clipkey-send.ps1 -Parts takes). */
+export function formatParts(numbers) {
+  const runs = []
+  for (const n of numbers) {
+    const last = runs[runs.length - 1]
+    if (last && n === last[1] + 1) last[1] = n
+    else runs.push([n, n])
+  }
+  return runs.map(([a, b]) => (a === b ? `${a}` : b === a + 1 ? `${a},${b}` : `${a}-${b}`)).join(',')
+}
+
+const toBase64 = (bytes) => {
+  let s = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+const fromBase64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0))
+
+/** Pieces collected so far as JSON-safe data (kept so a closed app can resume). */
+export const storeParts = (parts, at) => ({ id: parts.id, count: parts.count, at, pieces: parts.pieces.map((p) => (p ? toBase64(p) : null)) })
+
+/** Back from storeParts, or EMPTY_PARTS when missing, older than maxAgeMs or malformed. */
+export function loadParts(saved, now, maxAgeMs) {
+  try {
+    const ok =
+      saved && Number.isInteger(saved.id) && Number.isInteger(saved.count) && saved.count > 0 &&
+      Array.isArray(saved.pieces) && saved.pieces.length === saved.count && now - saved.at < maxAgeMs
+    if (!ok) return EMPTY_PARTS
+    const pieces = saved.pieces.map((p) => (typeof p === 'string' ? fromBase64(p) : null))
+    return pieces.some(Boolean) ? { id: saved.id, count: saved.count, pieces } : EMPTY_PARTS
+  } catch {
+    return EMPTY_PARTS
+  }
 }
 
 /** [0x01, flags, name length, name, data] -> { name, deflated, data } or null. */
@@ -195,8 +247,10 @@ export function reducePcRx(rx, msg) {
       const out = fail(rx, '확인값이 맞지 않아 버렸습니다 (전송 중 깨짐)')
       return damaged ? { ...out, event: { ...out.event, damaged } } : out
     }
-    case PC_RX_STATE.TIMEOUT:
-      return fail(rx, 'PC 전송이 멈춰 중단했습니다')
+    case PC_RX_STATE.TIMEOUT: {
+      const out = fail(rx, 'PC 전송이 멈춰 중단했습니다')
+      return { ...out, event: { ...out.event, stopped: true } }
+    }
     default:
       return { rx, event: null }
   }

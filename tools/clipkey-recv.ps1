@@ -91,6 +91,7 @@ $HeadPattern = '^\[(CK1|(?i:ck2))\.(\d+)\.$'
 $PreviewMax = 3000
 $Downloads = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'
 $ScriptDir = 'C:\temp'
+$ClipKeyVersion = '1.0.95'
 function Expand-Bytes([byte[]]$data, [int]$offset) {
     $in = [IO.MemoryStream]::new($data, $offset, $data.Length - $offset)
     $deflate = New-Object IO.Compression.DeflateStream($in, [IO.Compression.CompressionMode]::Decompress)
@@ -105,7 +106,7 @@ function Get-Slice([byte[]]$data, [int]$offset) {
     , $part
 }
 $form = New-Object Windows.Forms.Form
-$form.Text = '받기'
+$form.Text = "받기 $ClipKeyVersion"
 $form.Size = New-Object Drawing.Size(560, 420)
 $form.StartPosition = 'CenterScreen'
 $form.TopMost = $true

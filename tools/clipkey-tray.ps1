@@ -3,9 +3,11 @@
     [switch]$Uninstall
 )
 $ErrorActionPreference = 'Stop'
+$ClipKeyVersion = '1.0.95'
 $sendScript = Join-Path $PSScriptRoot 'clipkey-send.ps1'
 $recvScript = Join-Path $PSScriptRoot 'clipkey-recv.ps1'
 $logFile = Join-Path $env:TEMP 'clipkey-tray.log'
+$resumeFile = Join-Path $env:TEMP 'clipkey-tray-resume.json'
 $startupLink = Join-Path ([Environment]::GetFolderPath('Startup')) 'ClipKey 보내기.lnk'
 $desktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'ClipKey 트레이.lnk'
 $SlowDelayMs = 20
@@ -75,12 +77,13 @@ $idleIcon = New-Icon ([Drawing.Color]::SteelBlue)
 $busyIcon = New-Icon ([Drawing.Color]::DarkOrange)
 $tray = New-Object Windows.Forms.NotifyIcon
 $tray.Icon = $idleIcon
-$tray.Text = 'ClipKey 보내기 (두 번 클릭: 클립보드)'
+$idleTip = "ClipKey 보내기 $ClipKeyVersion (두 번 클릭: 클립보드)"
+$tray.Text = $idleTip
 $menu = New-Object Windows.Forms.ContextMenuStrip
 $miClip = New-Object Windows.Forms.ToolStripMenuItem '클립보드 보내기'
 $miClip.Font = New-Object Drawing.Font($miClip.Font, [Drawing.FontStyle]::Bold)
 $miFile = New-Object Windows.Forms.ToolStripMenuItem '파일 보내기...'
-$miParts = New-Object Windows.Forms.ToolStripMenuItem '빠진 조각 다시 보내기...'
+$miParts = New-Object Windows.Forms.ToolStripMenuItem '이어 보내기 / 빠진 조각...'
 $miStop = New-Object Windows.Forms.ToolStripMenuItem '보내기 멈추기'
 $miStop.Enabled = $false
 $miRecv = New-Object Windows.Forms.ToolStripMenuItem '받기 창'
@@ -88,7 +91,9 @@ $miSlow = New-Object Windows.Forms.ToolStripMenuItem ('천천히 보내기 (깨�
 $miSlow.CheckOnClick = $true
 $miLog = New-Object Windows.Forms.ToolStripMenuItem '마지막 기록 보기'
 $miQuit = New-Object Windows.Forms.ToolStripMenuItem '끝내기'
-[void]$menu.Items.AddRange(@($miClip, $miFile, $miParts, $miStop, (New-Object Windows.Forms.ToolStripSeparator), $miRecv, (New-Object Windows.Forms.ToolStripSeparator), $miSlow, $miLog, $miQuit))
+$miVersion = New-Object Windows.Forms.ToolStripMenuItem "버전 $ClipKeyVersion"
+$miVersion.Enabled = $false
+[void]$menu.Items.AddRange(@($miClip, $miFile, $miParts, $miStop, (New-Object Windows.Forms.ToolStripSeparator), $miRecv, (New-Object Windows.Forms.ToolStripSeparator), $miSlow, $miLog, $miQuit, $miVersion))
 $tray.ContextMenuStrip = $menu
 $tray.Visible = $true
 $timer = New-Object Windows.Forms.Timer
@@ -96,6 +101,16 @@ $timer.Interval = 300
 $script:proc = $null
 $script:stopped = $false
 $script:lastArgs = $null
+$script:resumeParts = ''
+try {
+    $saved = Get-Content -Raw -Encoding UTF8 $resumeFile | ConvertFrom-Json
+    if ($saved.args -is [string]) { $script:lastArgs = $saved.args }
+    if ($saved.parts -is [string] -and ((Get-Date) - [datetime]::Parse($saved.at)).TotalHours -lt 24) { $script:resumeParts = $saved.parts }
+} catch { }
+function Save-Resume {
+    $data = @{ args = $script:lastArgs; parts = $script:resumeParts; at = (Get-Date).ToString('o') }
+    try { $data | ConvertTo-Json | Set-Content -Encoding UTF8 $resumeFile } catch { }
+}
 $stopSignal = New-Object Threading.EventWaitHandle($false, 'ManualReset', 'ClipKeySendStop')
 $script:killAt = $null
 function Show-Note([string]$text, [string]$kind = 'Info') {
@@ -105,16 +120,16 @@ function Show-Note([string]$text, [string]$kind = 'Info') {
 }
 function Set-Busy([bool]$busy) {
     $tray.Icon = if ($busy) { $busyIcon } else { $idleIcon }
-    $tray.Text = if ($busy) { 'ClipKey: 보내는 중 (키보드를 쓰지 마세요)' } else { 'ClipKey 보내기 (두 번 클릭: 클립보드)' }
+    $tray.Text = if ($busy) { 'ClipKey: 보내는 중 (키보드를 쓰지 마세요)' } else { $idleTip }
     $miClip.Enabled = -not $busy
     $miFile.Enabled = -not $busy
     $miParts.Enabled = -not $busy
     $miStop.Enabled = $busy
 }
-function Start-Send([string]$extraArgs) {
+function Start-Send([string]$extraArgs, [switch]$Resume) {
     if ($script:proc) { Show-Note '이미 보내는 중입니다.' 'Warning'; return }
     if (-not (Test-Path $sendScript)) { Show-Note "clipkey-send.ps1이 없습니다: $sendScript" 'Error'; return }
-    if ($extraArgs -notmatch '-Parts') { $script:lastArgs = $extraArgs }
+    if (-not $Resume) { $script:lastArgs = $extraArgs; $script:resumeParts = ''; Save-Resume }
     if ($miSlow.Checked) { $extraArgs += " -DelayMs $SlowDelayMs" }
     $command = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; `$ProgressPreference = 'SilentlyContinue'; " +
         "try {{ & '{0}'{1} *>&1 | ForEach-Object {{ `"`$_`" }}; exit `$LASTEXITCODE }} " +
@@ -143,7 +158,11 @@ function Complete-Send {
     $out = @($script:outTask.Result -split "`r?`n" | Where-Object { $_.Trim() })
     $script:proc.Dispose()
     $script:proc = $null
-    Set-Content -Path $logFile -Encoding UTF8 -Value (@("[$(Get-Date)] 종료 코드 $code") + $out)
+    Set-Content -Path $logFile -Encoding UTF8 -Value (@("[$(Get-Date)] 트레이 $ClipKeyVersion, 종료 코드 $code") + $out)
+    $left = $out | Where-Object { $_ -match '-Parts ([\d,\-]+)' } | Select-Object -Last 1
+    if ($left -and $left -match '-Parts ([\d,\-]+)') { $script:resumeParts = $Matches[1] }
+    elseif ($code -eq 0 -and -not $script:stopped) { $script:resumeParts = '' }
+    Save-Resume
     Set-Busy $false
     if ($script:stopped) {
         if ($script:killed) {
@@ -189,9 +208,10 @@ $miFile.Add_Click({
 $miParts.Add_Click({
     if ($null -eq $script:lastArgs) { Show-Note '먼저 보낸 것이 없습니다.' 'Warning'; return }
     $what = if ($script:lastArgs) { '마지막에 보낸 파일' } else { '클립보드(보낼 때와 내용이 같아야 함)' }
-    $numbers = [Microsoft.VisualBasic.Interaction]::InputBox("$what 에서 다시 보낼 조각 번호 (예: 3,5)", 'ClipKey 조각 다시 보내기', '')
-    if ($numbers -match '^[\d,\s]+$') { Start-Send ("{0} -Parts '{1}'" -f $script:lastArgs, $numbers.Trim()) }
-    elseif ($numbers) { Show-Note '숫자와 쉼표만 넣으세요. 예: 3,5' 'Warning' }
+    $prompt = "$what 에서 보낼 조각 번호 (예: 3,5,8-40).`r`n폰 앱 받기 탭에 나온 번호를 넣으세요. 미리 넣은 값은 PC가 못 보낸 조각만이라, 폰에 다른 번호가 보이면 그 번호로 바꾸세요."
+    $numbers = [Microsoft.VisualBasic.Interaction]::InputBox($prompt, 'ClipKey 이어 보내기', $script:resumeParts)
+    if ($numbers -match '^[\d,\-\s]+$' -and $numbers -match '\d') { Start-Send ("{0} -Parts '{1}'" -f $script:lastArgs, $numbers.Trim()) -Resume }
+    elseif ($numbers) { Show-Note '숫자, 쉼표, -만 넣으세요. 예: 3,5,8-40' 'Warning' }
 })
 $miStop.Add_Click({ Stop-Send 150 })
 $miRecv.Add_Click({

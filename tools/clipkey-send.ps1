@@ -8,6 +8,7 @@
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
+$ClipKeyVersion = '1.0.95'
 $PartHeader = 7
 $PartGapMs = 500
 Add-Type -Namespace ClipKey -Name LedKeys -MemberDefinition @'
@@ -56,6 +57,30 @@ function Get-Symbols([int[]]$sync, [byte[]]$frame) {
     foreach ($symbol in $sync) { $list.Add($symbol) }
     foreach ($b in $frame) { for ($i = 0; $i -lt 4; $i++) { $list.Add(($b -shr (2 * $i)) -band 3) } }
     , $list.ToArray()
+}
+function Read-Parts([string]$text, [int]$max) {
+    $list = New-Object System.Collections.Generic.List[int]
+    foreach ($item in ($text -split '[,\s]+' | Where-Object { $_ })) {
+        if ($item -notmatch '^(\d{1,5})(?:-(\d{1,5}))?$') { return $null }
+        $from = [int]$Matches[1]
+        $to = if ($Matches[2]) { [int]$Matches[2] } else { $from }
+        if ($from -lt 1 -or $from -gt $to -or $to -gt $max) { return $null }
+        foreach ($n in $from..$to) { $list.Add($n) }
+    }
+    if ($list.Count -eq 0) { return $null }
+    , [int[]]($list | Sort-Object -Unique)
+}
+function Format-Parts([int[]]$numbers) {
+    $runs = New-Object System.Collections.Generic.List[string]
+    $i = 0
+    while ($i -lt $numbers.Count) {
+        $j = $i
+        while ($j + 1 -lt $numbers.Count -and $numbers[$j + 1] -eq $numbers[$j] + 1) { $j++ }
+        $run = if ($j -eq $i) { "$($numbers[$i])" } elseif ($j -eq $i + 1) { "$($numbers[$i]),$($numbers[$j])" } else { "$($numbers[$i])-$($numbers[$j])" }
+        $runs.Add($run)
+        $i = $j + 1
+    }
+    $runs -join ','
 }
 function Format-Duration([double]$seconds) {
     $s = [int][math]::Ceiling($seconds)
@@ -131,7 +156,11 @@ if ($payload.Length -le $FrameBytes -and -not $Parts) {
         exit 1
     }
     $id = Get-Crc16 $payload
-    $pick = if ($Parts) { [int[]]($Parts -split '[,\s]+' | Where-Object { $_ }) | Sort-Object -Unique } else { 1..$count }
+    $pick = if ($Parts) { Read-Parts $Parts $count } else { 1..$count }
+    if (-not $pick) {
+        Write-Host ("조각 번호는 1부터 {0}까지, 3,5,8-40 처럼 넣으세요: {1}" -f $count, $Parts) -ForegroundColor Red
+        exit 1
+    }
     foreach ($n in $pick) {
         if ($n -lt 1 -or $n -gt $count) {
             Write-Host ("조각 번호는 1부터 {0}까지입니다: {1}" -f $count, $n) -ForegroundColor Red
@@ -144,7 +173,7 @@ if ($payload.Length -le $FrameBytes -and -not $Parts) {
         $frames.Add([byte[]]($header + $piece))
         $partNumbers += $n
     }
-    $partNote = if ($Parts) { ", 조각 {0}만 다시(전체 {1}개)" -f ($pick -join ','), $count } else { ", 조각 {0}개로 나눔" -f $count }
+    $partNote = if ($Parts) { ", 조각 {0}만(전체 {1}개)" -f (Format-Parts $pick), $count } else { ", 조각 {0}개로 나눔" -f $count }
 }
 $sync = @(3, 0, 3, 0, 1, 2, 1, 2)
 $symbolSets = New-Object System.Collections.Generic.List[object]
@@ -249,7 +278,7 @@ finally {
     if ($done -lt $totalSymbols) {
         Write-Host '전송이 중간에 멈췄습니다. 기기는 2초 뒤 받던 내용을 버립니다.' -ForegroundColor Red
         if ($partsLeft) {
-            Write-Host ("남은 조각만 이어서 보내려면 같은 명령에 -Parts {0} 를 붙이세요." -f ($partsLeft -join ',')) -ForegroundColor Yellow
+            Write-Host ("이어 보내기: 트레이의 '이어 보내기' 또는 같은 명령에 -Parts {0}" -f (Format-Parts $partsLeft)) -ForegroundColor Yellow
         }
     }
 }
