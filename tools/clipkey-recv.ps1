@@ -91,7 +91,7 @@ $HeadPattern = '^\[(CK1|(?i:ck2))\.(\d+)\.$'
 $PreviewMax = 3000
 $Downloads = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'
 $ScriptDir = 'C:\temp'
-$ClipKeyVersion = '1.1.0'
+$ClipKeyVersion = '1.1.1'
 function Expand-Bytes([byte[]]$data, [int]$offset) {
     $in = [IO.MemoryStream]::new($data, $offset, $data.Length - $offset)
     $deflate = New-Object IO.Compression.DeflateStream($in, [IO.Compression.CompressionMode]::Decompress)
@@ -198,15 +198,10 @@ function Restore-Payload([byte[]]$payload, [string]$took) {
         $btnSave.Enabled = $true
         $preview.Text = "{0} ({1}바이트)" -f $name, $bytes.Length
         Set-Status ("완료: {0} {1}바이트{2}" -f $name, $bytes.Length, $took) 'DarkGreen'
-        if ($name -match '^clipkey-(recv|send|tray|shortcut)\.ps1$') {
+        if ($name -match '^clipkey-(recv|send|tray)\.ps1$') {
             $path = Join-Path $ScriptDir $name
             [void](New-Item -ItemType Directory -Force $ScriptDir)
             [IO.File]::WriteAllBytes($path, $bytes)
-            if ($name -eq 'clipkey-shortcut.ps1') {
-                Start-Process powershell.exe -ArgumentList ('-ExecutionPolicy Bypass -File "{0}"' -f $path) -WindowStyle Hidden
-                Set-Status ("바로가기 만듦: 바탕 화면 'ClipKey 트레이' 아이콘, 트레이도 띄움{0}" -f $took) 'DarkGreen'
-                return
-            }
             Set-Status ("스크립트 저장: {0} {1}바이트{2}. 트레이·받기 창은 다시 띄우면 새 버전" -f $path, $bytes.Length, $took) 'DarkGreen'
             return
         }

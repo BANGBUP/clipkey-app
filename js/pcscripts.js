@@ -12,14 +12,21 @@ export const PC_SCRIPTS = Object.freeze([
   { file: 'clipkey-recv.ps1', title: '받기 창', what: "폰의 '트레이로 압축 보내기'를 받아 텍스트·파일로 복원" },
   { file: 'clipkey-send.ps1', title: '보내기', what: 'PC 클립보드·파일을 폰 받기 탭으로 (표시등 신호)' },
   { file: 'clipkey-tray.ps1', title: '트레이', what: '알림 영역 아이콘: 보내기, 받기 창 열기 (위 둘과 같은 폴더에)' },
-  // run: started right after saving (the 받기 window does the same for this name)
-  { file: 'clipkey-shortcut.ps1', title: '트레이 바로가기', what: "바탕 화면에 'ClipKey 트레이' 아이콘을 만들고 트레이를 띄움 (저장하면 바로 실행)", run: true },
 ])
 
-/** Typed first: makes the folder, then saves everything typed until Ctrl+Z (and runs it if `run`). */
-export const saveCommand = (file, run = false) =>
-  `New-Item -ItemType Directory -Force ${DIR} | Out-Null; [Console]::In.ReadToEnd() | Set-Content -Encoding UTF8 ${DIR}\\${file}` +
-  (run ? `; powershell -ExecutionPolicy Bypass -File ${DIR}\\${file}` : '')
+/**
+ * One line, typed in PowerShell in the folder that holds the scripts (may not be C:\temp):
+ * the tray's -Install makes the desktop icon 'ClipKey 트레이', registers it at login and starts it.
+ */
+export const TRAY_INSTALL = Object.freeze({
+  title: '트레이 바로가기',
+  command: 'powershell -ExecutionPolicy Bypass -File .\\clipkey-tray.ps1 -Install',
+  what: "바탕 화면 'ClipKey 트레이' 아이콘 + 로그인 때 자동 실행 + 지금 띄우기. PowerShell을 열어 ClipKey 스크립트가 있는 폴더(예: cd C:\\temp)에서 누르세요",
+})
+
+/** Typed first: makes the folder, then saves everything typed until Ctrl+Z. */
+export const saveCommand = (file) =>
+  `New-Item -ItemType Directory -Force ${DIR} | Out-Null; [Console]::In.ReadToEnd() | Set-Content -Encoding UTF8 ${DIR}\\${file}`
 
 /** The version stamped into a published script (scripts/build-site.sh), or null. */
 export function scriptVersion(text) {
@@ -28,9 +35,9 @@ export function scriptVersion(text) {
 }
 
 /** Save command, script and a final line break (Ctrl+Z must start a line). */
-export function scriptTyping(file, script, run = false) {
+export function scriptTyping(file, script) {
   const body = script.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
-  return `${saveCommand(file, run)}\n${body}${body.endsWith('\n') ? '' : '\n'}`
+  return `${saveCommand(file)}\n${body}${body.endsWith('\n') ? '' : '\n'}`
 }
 
 const el = (tag, props = {}, children = []) => {
@@ -67,12 +74,12 @@ export function setupPcScripts({ root, typeText, typeOps, estimate, packFile, no
     if (bytes) await packFile(file, bytes)
   }
 
-  async function sendScript({ file, title, run = false }) {
+  async function sendScript({ file, title }) {
     const bytes = await loadScript(file)
     if (!bytes) return
-    const text = scriptTyping(file, new TextDecoder().decode(bytes), run)
+    const text = scriptTyping(file, new TextDecoder().decode(bytes))
     const ok = await askConfirm(
-      `${title} (${file})\n\nPC에서 PowerShell 창을 열어 앞에 두세요. 저장 명령, 스크립트 내용, 마지막 Ctrl+Z와 Enter까지 이어서 칩니다. 예상 약 ${estimate(text)}.\n끝나면 ${DIR}\\${file} 로 저장${run ? '하고 바로 실행' : ''}됩니다.`,
+      `${title} (${file})\n\nPC에서 PowerShell 창을 열어 앞에 두세요. 저장 명령, 스크립트 내용, 마지막 Ctrl+Z와 Enter까지 이어서 칩니다. 예상 약 ${estimate(text)}.\n끝나면 ${DIR}\\${file} 로 저장됩니다.`,
       { okText: '전송하기' },
     )
     if (!ok) return
@@ -112,5 +119,16 @@ export function setupPcScripts({ root, typeText, typeOps, estimate, packFile, no
     ])
   }
 
-  root.replaceChildren(...PC_SCRIPTS.map(row))
+  // A command, not a file: typed without Enter (the user checks the folder, then presses it)
+  const installRow = el('div', { className: 'row' }, [
+    el('div', { className: 'grow' }, [
+      el('strong', { textContent: TRAY_INSTALL.title }),
+      el('div', { className: 'hint', textContent: `${TRAY_INSTALL.command} · ${TRAY_INSTALL.what} (Enter는 직접)` }),
+    ]),
+    el('div', { className: 'split-btns' }, [
+      button('타이핑', 'PowerShell 창에 명령 한 줄을 타이핑 (Enter는 직접)', () => typeText(TRAY_INSTALL.command)),
+    ]),
+  ])
+
+  root.replaceChildren(...PC_SCRIPTS.map(row), installRow)
 }
