@@ -91,7 +91,7 @@ $HeadPattern = '^\[(CK1|(?i:ck2))\.(\d+)\.$'
 $PreviewMax = 3000
 $Downloads = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'
 $ScriptDir = 'C:\temp'
-$ClipKeyVersion = '1.0.98'
+$ClipKeyVersion = '1.0.99'
 function Expand-Bytes([byte[]]$data, [int]$offset) {
     $in = [IO.MemoryStream]::new($data, $offset, $data.Length - $offset)
     $deflate = New-Object IO.Compression.DeflateStream($in, [IO.Compression.CompressionMode]::Decompress)
@@ -151,11 +151,34 @@ function Set-Status([string]$text, [string]$color = 'Black') {
 Set-Status '대기 중'
 $script:lastText = $null
 $script:lastFile = $null
+function Get-GuessedExtension([byte[]]$bytes) {
+    $head = if ($bytes.Length -ge 8) { $bytes[0..7] } else { $bytes }
+    $hex = ($head | ForEach-Object { $_.ToString('X2') }) -join ''
+    if ($hex.StartsWith('25504446')) { return '.pdf' }
+    if ($hex.StartsWith('89504E47')) { return '.png' }
+    if ($hex.StartsWith('FFD8FF')) { return '.jpg' }
+    if ($hex.StartsWith('47494638')) { return '.gif' }
+    try {
+        [void](New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+        return '.txt'
+    } catch { return '' }
+}
 function Save-File {
+    $name = $script:lastFile.Name
+    $ext = [IO.Path]::GetExtension($name)
+    if (-not $ext) {
+        $ext = Get-GuessedExtension $script:lastFile.Bytes
+        $name += $ext
+    }
     $dialog = New-Object Windows.Forms.SaveFileDialog
-    $dialog.FileName = $script:lastFile.Name
+    $dialog.FileName = $name
     $dialog.InitialDirectory = $Downloads
     $dialog.Title = '저장'
+    if ($ext) {
+        $dialog.Filter = "{0} 파일 (*{1})|*{1}|모든 파일 (*.*)|*.*" -f $ext.TrimStart('.').ToUpper(), $ext
+        $dialog.DefaultExt = $ext.TrimStart('.')
+        $dialog.AddExtension = $true
+    }
     if ($dialog.ShowDialog($form) -eq 'OK') {
         [IO.File]::WriteAllBytes($dialog.FileName, $script:lastFile.Bytes)
         Set-Status ("저장: {0}" -f $dialog.FileName) 'DarkGreen'

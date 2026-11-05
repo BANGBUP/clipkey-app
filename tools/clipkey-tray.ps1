@@ -3,7 +3,7 @@
     [switch]$Uninstall
 )
 $ErrorActionPreference = 'Stop'
-$ClipKeyVersion = '1.0.98'
+$ClipKeyVersion = '1.0.99'
 $sendScript = Join-Path $PSScriptRoot 'clipkey-send.ps1'
 $recvScript = Join-Path $PSScriptRoot 'clipkey-recv.ps1'
 $logFile = Join-Path $env:TEMP 'clipkey-tray.log'
