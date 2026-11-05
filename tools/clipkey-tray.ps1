@@ -96,6 +96,8 @@ $timer.Interval = 300
 $script:proc = $null
 $script:stopped = $false
 $script:lastArgs = $null
+$stopSignal = New-Object Threading.EventWaitHandle($false, 'ManualReset', 'ClipKeySendStop')
+$script:killAt = $null
 function Show-Note([string]$text, [string]$kind = 'Info') {
     if (-not $text) { $text = '(내용 없음)' }
     if ($text.Length -gt 250) { $text = $text.Substring(0, 250) }
@@ -125,6 +127,9 @@ function Start-Send([string]$extraArgs) {
     $info.StandardOutputEncoding = [Text.Encoding]::UTF8
     $script:locks = Get-Locks
     $script:stopped = $false
+    $script:killed = $false
+    $script:killAt = $null
+    [void]$stopSignal.Reset()
     $script:proc = [Diagnostics.Process]::Start($info)
     $script:outTask = $script:proc.StandardOutput.ReadToEndAsync()
     Set-Busy $true
@@ -133,6 +138,7 @@ function Start-Send([string]$extraArgs) {
 }
 function Complete-Send {
     $timer.Stop()
+    [void]$stopSignal.Reset()
     $code = $script:proc.ExitCode
     $out = @($script:outTask.Result -split "`r?`n" | Where-Object { $_.Trim() })
     $script:proc.Dispose()
@@ -140,9 +146,11 @@ function Complete-Send {
     Set-Content -Path $logFile -Encoding UTF8 -Value (@("[$(Get-Date)] 종료 코드 $code") + $out)
     Set-Busy $false
     if ($script:stopped) {
-        Start-Sleep -Milliseconds 200
-        Restore-Locks $script:locks
-        Show-Note '보내기를 멈췄습니다. 기기는 2초 뒤 받던 내용을 버립니다.' 'Warning'
+        if ($script:killed) {
+            Start-Sleep -Milliseconds 200
+            Restore-Locks $script:locks
+        }
+        Show-Note '보내기를 멈추고 잠금 키를 되돌렸습니다. 기기는 2초 뒤 받던 내용을 버립니다.' 'Warning'
     } elseif ($code -eq 0 -and $out.Count) {
         Show-Note $out[-1]
     } elseif ($out.Count) {
@@ -151,7 +159,26 @@ function Complete-Send {
         Show-Note "보내지 못했습니다 (종료 코드 $code)." 'Error'
     }
 }
-$timer.Add_Tick({ if ($script:proc -and $script:proc.HasExited) { Complete-Send } })
+function Stop-Send([int]$graceSeconds) {
+    if (-not $script:proc -or $script:proc.HasExited) { return }
+    $script:stopped = $true
+    [void]$stopSignal.Set()
+    $script:killAt = (Get-Date).AddSeconds($graceSeconds)
+    $miStop.Enabled = $false
+    Show-Note '멈추는 중입니다. 잠금 키를 원래대로 되돌린 뒤 끝납니다.'
+}
+function Kill-Send {
+    if ($script:proc -and -not $script:proc.HasExited) {
+        $script:killed = $true
+        $script:proc.Kill()
+        $script:proc.WaitForExit()
+    }
+}
+$timer.Add_Tick({
+    if (-not $script:proc) { return }
+    if ($script:proc.HasExited) { Complete-Send; return }
+    if ($script:killAt -and (Get-Date) -gt $script:killAt) { Kill-Send; Complete-Send }
+})
 $miClip.Add_Click({ Start-Send '' })
 $tray.Add_MouseDoubleClick({ param($s, $e) if ($e.Button -eq 'Left') { Start-Send '' } })
 $miFile.Add_Click({
@@ -166,12 +193,7 @@ $miParts.Add_Click({
     if ($numbers -match '^[\d,\s]+$') { Start-Send ("{0} -Parts '{1}'" -f $script:lastArgs, $numbers.Trim()) }
     elseif ($numbers) { Show-Note '숫자와 쉼표만 넣으세요. 예: 3,5' 'Warning' }
 })
-$miStop.Add_Click({
-    if ($script:proc -and -not $script:proc.HasExited) {
-        $script:stopped = $true
-        $script:proc.Kill()
-    }
-})
+$miStop.Add_Click({ Stop-Send 150 })
 $miRecv.Add_Click({
     if (-not (Test-Path $recvScript)) { Show-Note "clipkey-recv.ps1이 없습니다: $recvScript" 'Error'; return }
     $info = New-Object Diagnostics.ProcessStartInfo 'powershell.exe'
@@ -185,9 +207,8 @@ $miLog.Add_Click({
 })
 $miQuit.Add_Click({
     if ($script:proc -and -not $script:proc.HasExited) {
-        $script:stopped = $true
-        $script:proc.Kill()
-        $script:proc.WaitForExit()
+        Stop-Send 0
+        if (-not $script:proc.WaitForExit(150000)) { Kill-Send }
         Complete-Send
     }
     $tray.Visible = $false
@@ -198,5 +219,6 @@ try {
 }
 finally {
     $tray.Dispose()
+    $stopSignal.Dispose()
     $mutex.ReleaseMutex()
 }

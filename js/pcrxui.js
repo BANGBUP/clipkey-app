@@ -2,7 +2,7 @@
 // memory only (they may be passwords); just the auto-copy preference is saved.
 
 import { SECURE_MSG } from './constants.js'
-import { EMPTY_RX, EMPTY_PARTS, reducePcRx, addPart, payloadEvent, inflateText, inflateBytes, textOf, charCount } from './pcrx.js'
+import { EMPTY_RX, EMPTY_PARTS, reducePcRx, addPart, partsToResend, payloadEvent, inflateText, inflateBytes, textOf, charCount } from './pcrx.js'
 
 const MAX_ITEMS = 10
 const PREF_KEY = 'clipkey.pcrx.v1'
@@ -115,13 +115,19 @@ export function setupPcReceive({ notify, toSendTab }) {
     const head = document.createElement('div')
     head.className = 'hint'
     const packed = item.compressed ? ` (압축 ${item.size}바이트)` : ` · ${item.size}바이트`
-    const what = item.file
+    const what = item.damaged
+      ? `깨진 받기 · ${item.size}바이트`
+      : item.file
       ? `파일 ${item.file.name} · ${item.file.bytes.length}바이트${item.compressed ? ` (압축 ${item.size}바이트)` : ''}`
       : `${charCount(item.text)}자${packed}`
     head.textContent = `${timeLabel(item.at)} · ${what}`
     const text = document.createElement('pre')
     text.className = 'rx-text'
-    text.textContent = item.text ?? '(텍스트가 아닌 파일: 저장해서 여세요)'
+    text.textContent =
+      item.text ??
+      (item.damaged
+        ? '(전송 중 깨진 내용: 원인을 찾는 데 씁니다. 저장해서 보낸 원본 파일과 함께 전달해 주세요)'
+        : '(텍스트가 아닌 파일: 저장해서 여세요)')
     const actions = document.createElement('div')
     actions.className = 'row'
     const action = (label, run, extra = '') => {
@@ -186,6 +192,25 @@ export function setupPcReceive({ notify, toSendTab }) {
     markUnseen()
   }
 
+  // A frame whose checksum failed: keep what arrived (to compare with the original) and,
+  // for a split payload, say which pieces to send again.
+  function failedFrame(event) {
+    const resend = partsToResend(parts, event.damaged)
+    if (event.damaged) {
+      const stamp = new Date().toTimeString().slice(0, 8).replaceAll(':', '')
+      const file = { name: `clipkey-damaged-${stamp}.bin`, bytes: event.damaged }
+      const item = { id: nextId++, text: null, file, size: event.damaged.length, compressed: false, damaged: true, at: new Date() }
+      setItems([item, ...items].slice(0, MAX_ITEMS))
+    }
+    const again = resend.length
+      ? ` 다 보낸 뒤 트레이의 '빠진 조각 다시 보내기'로 ${resend.join(',')}번 조각을 다시 보내세요.`
+      : ''
+    const kept = event.damaged ? " 깨진 내용은 목록에 '깨진 받기'로 남겼습니다." : ''
+    setStatus(`실패: ${event.reason}.${again}${kept}`)
+    notify(`PC에서 받기 실패: ${event.reason}`)
+    markUnseen()
+  }
+
   function onSecure(msg) {
     if (msg.type !== SECURE_MSG.PC_RX && msg.type !== SECURE_MSG.PC_TEXT) return
     const result = reducePcRx(rx, msg)
@@ -232,7 +257,7 @@ export function setupPcReceive({ notify, toSendTab }) {
     } else if (event.type === 'done') {
       received(event.text, event.size)
     } else if (event.type === 'failed') {
-      failed(event.reason)
+      failedFrame(event)
     }
   }
 

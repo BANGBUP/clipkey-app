@@ -115,6 +115,23 @@ export function addPart(parts, { id, index, count, data }) {
   return { parts: next, have, missing, payload: null }
 }
 
+/**
+ * A frame failed while pieces were coming in: the piece numbers (1-based) to send again so
+ * far. The damaged bytes usually still say which piece it was; otherwise it was the one after
+ * the newest (pieces go out in order). [] when no split payload is involved.
+ */
+export function partsToResend(parts, damaged = null) {
+  const hint = damaged && damaged[0] === PAYLOAD.PART ? parsePart(damaged) : null
+  const sameSet = hint && parts.count > 0 && hint.id === parts.id && hint.count === parts.count
+  // A new set (or none collected yet): only the broken piece itself is known.
+  if (hint && !sameSet) return [hint.index + 1]
+  if (parts.count === 0) return []
+  const newest = parts.pieces.reduce((last, p, i) => (p ? i : last), -1)
+  const failedAt = sameSet ? hint.index : newest + 1
+  const upTo = Math.min(Math.max(newest, failedAt), parts.count - 1)
+  return parts.pieces.slice(0, upTo + 1).flatMap((p, i) => (p ? [] : [i + 1]))
+}
+
 /** [0x01, flags, name length, name, data] -> { name, deflated, data } or null. */
 export function parseFilePayload(bytes) {
   if (bytes.length < 3) return null
@@ -171,8 +188,13 @@ export function reducePcRx(rx, msg) {
     }
     case PC_RX_STATE.DONE:
       return onDone(rx)
-    case PC_RX_STATE.BAD:
-      return fail(rx, '확인값이 맞지 않아 버렸습니다 (전송 중 깨짐)')
+    case PC_RX_STATE.BAD: {
+      // Newer firmware first sends what arrived, so it can be saved and compared.
+      const b = rx.buffer
+      const damaged = b && !b.broken && b.filled === b.total && b.total === msg.total ? b.bytes : null
+      const out = fail(rx, '확인값이 맞지 않아 버렸습니다 (전송 중 깨짐)')
+      return damaged ? { ...out, event: { ...out.event, damaged } } : out
+    }
     case PC_RX_STATE.TIMEOUT:
       return fail(rx, 'PC 전송이 멈춰 중단했습니다')
     default:

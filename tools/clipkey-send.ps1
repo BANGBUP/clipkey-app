@@ -3,7 +3,7 @@
     [string]$Path,
     [ValidateRange(5, 1000)][int]$DelayMs = 5,
     [string]$Parts,
-    [ValidateRange(64, 32768)][int]$FrameBytes = 32768,
+    [ValidateRange(64, 32768)][int]$FrameBytes = 1024,
     [switch]$NoCompress,
     [switch]$DryRun
 )
@@ -20,14 +20,17 @@ static void Flip(byte vk, byte scan, uint ext) {
     keybd_event(vk, scan, ext, System.UIntPtr.Zero);
     keybd_event(vk, scan, ext | 2, System.UIntPtr.Zero);
 }
-public static void SendSymbols(int[] symbols, int start, int count, int delayMs) {
+public static System.Threading.WaitHandle Stop;
+public static bool SendSymbols(int[] symbols, int start, int count, int delayMs) {
     for (int i = start; i < start + count; i++) {
+        if (Stop != null && Stop.WaitOne(0)) return false;
         bool n = (symbols[i] & 1) != 0, c = (symbols[i] & 2) != 0;
         if (n != Num) { Flip(0x90, 0x45, 1); Num = n; }
         if (c != Caps) { Flip(0x14, 0x3A, 0); Caps = c; }
         Flip(0x91, 0x46, 0); Scroll = !Scroll;
         System.Threading.Thread.Sleep(delayMs);
     }
+    return true;
 }
 '@
 $KEYUP = 0x2
@@ -177,6 +180,32 @@ foreach ($key in $AllKeys) {
         }
     }
 }
+$RestoreLimitS = 110
+$SteadyS = 5
+function Restore-Locks {
+    $Num.State = [ClipKey.LedKeys]::Num
+    $Caps.State = [ClipKey.LedKeys]::Caps
+    $Scroll.State = [ClipKey.LedKeys]::Scroll
+    Start-Sleep -Milliseconds $DelayMs
+    foreach ($key in $AllKeys) { Set-Key $key $key.Original }
+    $limit = [Diagnostics.Stopwatch]::StartNew()
+    for ($round = 0; $round -le 2; $round++) {
+        $last = $null
+        $steady = [Diagnostics.Stopwatch]::StartNew()
+        $wrong = @()
+        while ($limit.Elapsed.TotalSeconds -lt $RestoreLimitS) {
+            Start-Sleep -Milliseconds 100
+            $now = ($AllKeys | ForEach-Object { Get-Toggled $_ }) -join ','
+            if ($now -ne $last) { $last = $now; $steady.Restart() }
+            $wrong = @($AllKeys | Where-Object { (Get-Toggled $_) -ne $_.Original })
+            if (-not $wrong) { return $true }
+            if ($steady.Elapsed.TotalSeconds -ge $SteadyS) { break }
+        }
+        if ($limit.Elapsed.TotalSeconds -ge $RestoreLimitS) { return $false }
+        foreach ($key in $wrong) { Switch-Key $key }
+    }
+    $false
+}
 $done = 0
 $partsLeft = $partNumbers
 $step = 256
@@ -184,15 +213,19 @@ $clock = [Diagnostics.Stopwatch]::StartNew()
 [ClipKey.LedKeys]::Num = $Num.State
 [ClipKey.LedKeys]::Caps = $Caps.State
 [ClipKey.LedKeys]::Scroll = $Scroll.State
+$stop = $null
+try { $stop = [Threading.EventWaitHandle]::OpenExisting('ClipKeySendStop') } catch { }
+[ClipKey.LedKeys]::Stop = $stop
+$stopped = $false
 try {
-    for ($p = 0; $p -lt $symbolSets.Count; $p++) {
+    for ($p = 0; $p -lt $symbolSets.Count -and -not $stopped; $p++) {
         $symbols = $symbolSets[$p]
         if ($p -gt 0) { Start-Sleep -Milliseconds $PartGapMs }
         $partsLeft = $partNumbers | Select-Object -Skip $p
         $sent = 0
         while ($sent -lt $symbols.Length) {
             $count = [math]::Min($step, $symbols.Length - $sent)
-            [ClipKey.LedKeys]::SendSymbols($symbols, $sent, $count, $DelayMs)
+            if (-not [ClipKey.LedKeys]::SendSymbols($symbols, $sent, $count, $DelayMs)) { $stopped = $true; break }
             $sent += $count
             $done += $count
             $status = "{0}/{1}바이트" -f [int]($done / 4), [int]($totalSymbols / 4)
@@ -201,19 +234,18 @@ try {
         }
     }
     Write-Progress -Activity 'ClipKey로 보내는 중' -Completed
-    Write-Host ("보냈습니다: {0}{1}, {2}. 폰 앱의 받기 탭을 확인하세요." -f $what, $partNote, (Format-Duration $clock.Elapsed.TotalSeconds)) -ForegroundColor Green
+    if (-not $stopped) {
+        Write-Host ("PC에서 다 보냈습니다: {0}{1}, {2}. 제대로 받았는지는 폰 앱의 받기 탭에서 확인하세요." -f $what, $partNote, (Format-Duration $clock.Elapsed.TotalSeconds)) -ForegroundColor Green
+    }
 }
 finally {
-    $Num.State = [ClipKey.LedKeys]::Num
-    $Caps.State = [ClipKey.LedKeys]::Caps
-    $Scroll.State = [ClipKey.LedKeys]::Scroll
-    Start-Sleep -Milliseconds $DelayMs
-    foreach ($key in $AllKeys) { Set-Key $key $key.Original }
-    Start-Sleep -Milliseconds 100
-    foreach ($key in $AllKeys) {
-        if ((Get-Toggled $key) -ne $key.Original) { Switch-Key $key }
-    }
+    try { [Console]::TreatControlCAsInput = $true; Write-Host '잠금 키를 원래대로 되돌리는 중...' } catch { }
+    $restored = Restore-Locks
     [void][ClipKey.LedKeys]::timeEndPeriod(1)
+    if ($stop) { $stop.Dispose() }
+    if (-not $restored) {
+        Write-Host '잠금 키(넘락·캡스락·스크롤락)를 원래대로 되돌리지 못했습니다. 직접 눌러 맞춰 주세요.' -ForegroundColor Red
+    }
     if ($done -lt $totalSymbols) {
         Write-Host '전송이 중간에 멈췄습니다. 기기는 2초 뒤 받던 내용을 버립니다.' -ForegroundColor Red
         if ($partsLeft) {
