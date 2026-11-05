@@ -14,11 +14,6 @@ export const PC_SCRIPTS = Object.freeze([
   { file: 'clipkey-tray.ps1', title: '트레이', what: '알림 영역 아이콘: 보내기, 받기 창 열기 (위 둘과 같은 폴더에)' },
 ])
 
-export const PC_COMMANDS = Object.freeze([
-  { title: '트레이 실행', command: `powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File ${DIR}\\clipkey-tray.ps1` },
-  { title: '트레이 자동 실행 등록', command: `powershell -ExecutionPolicy Bypass -File ${DIR}\\clipkey-tray.ps1 -Install` },
-])
-
 /** Typed first: makes the folder, then saves everything typed until Ctrl+Z. */
 export const saveCommand = (file) =>
   `New-Item -ItemType Directory -Force ${DIR} | Out-Null; [Console]::In.ReadToEnd() | Set-Content -Encoding UTF8 ${DIR}\\${file}`
@@ -38,22 +33,35 @@ const el = (tag, props = {}, children = []) => {
 /**
  * @param {{ root: HTMLElement, typeText: (text: string) => Promise<boolean>,
  *           typeOps: (ops: object[]) => Promise<unknown>, estimate: (text: string) => string,
+ *           packFile: (name: string, bytes: Uint8Array) => Promise<void>,
  *           notify: (m: string) => void }} deps  typeText resolves true when fully typed
  */
-export function setupPcScripts({ root, typeText, typeOps, estimate, notify }) {
+export function setupPcScripts({ root, typeText, typeOps, estimate, packFile, notify }) {
+  // Bytes as published (with the UTF-8 BOM Windows PowerShell needs for 한글).
   async function fetchScript(file) {
     const res = await fetch(`tools/${file}`, { cache: 'no-cache' })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return res.text()
+    return new Uint8Array(await res.arrayBuffer())
+  }
+
+  async function loadScript(file) {
+    try {
+      return await fetchScript(file)
+    } catch (error) {
+      notify(`${file}을 불러오지 못했습니다(${error.message}). 인터넷에 연결된 상태에서 앱을 한 번 열어 두세요`)
+      return null
+    }
+  }
+
+  async function packScript({ file }) {
+    const bytes = await loadScript(file)
+    if (bytes) await packFile(file, bytes)
   }
 
   async function sendScript({ file, title }) {
-    let text
-    try {
-      text = scriptTyping(file, await fetchScript(file))
-    } catch (error) {
-      return notify(`${file}을 불러오지 못했습니다(${error.message}). 인터넷에 연결된 상태에서 앱을 한 번 열어 두세요`)
-    }
+    const bytes = await loadScript(file)
+    if (!bytes) return
+    const text = scriptTyping(file, new TextDecoder().decode(bytes))
     const ok = await askConfirm(
       `${title} (${file})\n\nPC에서 PowerShell 창을 열어 앞에 두세요. 저장 명령, 스크립트 내용, 마지막 Ctrl+Z와 Enter까지 이어서 칩니다. 예상 약 ${estimate(text)}.\n끝나면 ${DIR}\\${file} 로 저장됩니다.`,
       { okText: '전송하기' },
@@ -62,19 +70,24 @@ export function setupPcScripts({ root, typeText, typeOps, estimate, notify }) {
     if (await typeText(text)) await typeOps([{ type: OP.TAP, mod: MOD.LCTRL, key: KEY_Z }, { type: OP.TAP, mod: 0, key: KEY.ENTER }])
   }
 
-  const row = (title, what, onSend) => {
-    const button = el('button', { className: 'btn small', textContent: '전송하기' })
-    button.addEventListener('click', onSend)
-    return el('div', { className: 'row' }, [
-      el('div', { className: 'grow' }, [el('strong', { textContent: title }), el('div', { className: 'hint', textContent: what })]),
-      button,
-    ])
+  const button = (text, title, onClick) => {
+    const b = el('button', { className: 'btn small', textContent: text, title })
+    b.addEventListener('click', onClick)
+    return b
   }
 
-  root.replaceChildren(
-    ...PC_SCRIPTS.map((s) => row(`${s.title} · ${s.file}`, s.what, () => sendScript(s))),
-    ...PC_COMMANDS.map((c) =>
-      row(c.title, `${c.command}  (Enter는 직접)`, () => typeText(c.command)),
-    ),
-  )
+  // One row per script: 타이핑 (PowerShell 창) | 압축 (받기 창, much faster)
+  const row = (script) =>
+    el('div', { className: 'row' }, [
+      el('div', { className: 'grow' }, [
+        el('strong', { textContent: script.title }),
+        el('div', { className: 'hint', textContent: `${script.file} · ${script.what}` }),
+      ]),
+      el('div', { className: 'split-btns' }, [
+        button('타이핑', 'PowerShell 창에 타이핑해서 저장', () => sendScript(script)),
+        button('압축', `PC의 받기 창으로 압축해서 보냄 (${DIR}에 저장)`, () => packScript(script)),
+      ]),
+    ])
+
+  root.replaceChildren(...PC_SCRIPTS.map(row))
 }

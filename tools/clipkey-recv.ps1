@@ -90,6 +90,7 @@ $ChordPrefix = '[ck2.'
 $HeadPattern = '^\[(CK1|(?i:ck2))\.(\d+)\.$'
 $PreviewMax = 3000
 $Downloads = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'
+$ScriptDir = 'C:\temp'
 function Expand-Bytes([byte[]]$data, [int]$offset) {
     $in = [IO.MemoryStream]::new($data, $offset, $data.Length - $offset)
     $deflate = New-Object IO.Compression.DeflateStream($in, [IO.Compression.CompressionMode]::Decompress)
@@ -173,6 +174,13 @@ function Restore-Payload([byte[]]$payload, [string]$took) {
         $btnSave.Enabled = $true
         $preview.Text = "{0} ({1}바이트)" -f $name, $bytes.Length
         Set-Status ("완료: {0} {1}바이트{2}" -f $name, $bytes.Length, $took) 'DarkGreen'
+        if ($name -match '^clipkey-(recv|send|tray)\.ps1$') {
+            $path = Join-Path $ScriptDir $name
+            [void](New-Item -ItemType Directory -Force $ScriptDir)
+            [IO.File]::WriteAllBytes($path, $bytes)
+            Set-Status ("스크립트 저장: {0} {1}바이트{2}. 트레이·받기 창은 다시 띄우면 새 버전" -f $path, $bytes.Length, $took) 'DarkGreen'
+            return
+        }
         Save-File
         return
     }

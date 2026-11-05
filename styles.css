@@ -389,3 +389,7 @@ details.more > summary::-webkit-details-marker { display: none; }
 details.more > summary::after { content: " ▾"; }
 details.more[open] > summary::after { content: " ▴"; }
 details.more > .hint { margin-top: 4px; }
+
+/* PC 필수 스크립트: 타이핑 | 압축 side by side */
+.split-btns { display: flex; gap: 6px; flex: none; align-self: center; }
+.split-btns > .btn { padding-inline: 12px; }

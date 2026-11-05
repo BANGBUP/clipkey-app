@@ -565,6 +565,7 @@ function init() {
     typeText: (text) => sendText(text, { record: false }),
     typeOps: (ops) => sender.sendOps(ops),
     estimate: (text) => formatDuration(estimateTypingMs(countKeys(text), typingTiming())),
+    packFile: (name, bytes) => packSend.sendFile(name, bytes),
     notify,
   })
   packSend = setupPackSend({ $, client, sender, notify, log, getSettings: () => settings, getText: () => $('sendText').value })

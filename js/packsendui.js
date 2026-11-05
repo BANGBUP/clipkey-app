@@ -96,7 +96,9 @@ export function setupPackSend({ $, client, sender, notify, log, getSettings, get
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0]
     fileInput.value = '' // the same file can be picked again
-    if (file) send(`파일 ${file.name}`, async () => filePayload(file.name, new Uint8Array(await file.arrayBuffer())))
+    if (file) file.arrayBuffer().then((data) => sendFile(file.name, new Uint8Array(data)))
   })
-  return Object.freeze({ isBusy })
+  /** A file from elsewhere (PC 필수 스크립트 > 압축). */
+  const sendFile = (name, bytes) => send(`파일 ${name}`, () => filePayload(name, bytes))
+  return Object.freeze({ isBusy, sendFile })
 }
