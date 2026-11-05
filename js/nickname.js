@@ -21,8 +21,14 @@ export function setupNickname({ client, notify, onChange }) {
     }
   }
 
-  // After a fresh registration: offer to name this ClipKey right away.
-  function askAfterRegister() {
+  let infoSeen = false // DEVICE_INFO arrived on this link (it carries the nickname)
+  const INFO_WAIT_MS = 2000
+
+  // After a fresh registration: offer to name this ClipKey, unless it already has a name
+  // (another phone, or this one before, named it: registering again must not ask).
+  async function askAfterRegister() {
+    for (let waited = 0; !infoSeen && waited < INFO_WAIT_MS; waited += 100) await new Promise((r) => setTimeout(r, 100))
+    if (nickname.trim()) return
     const dialog = $('nicknameDialog')
     const field = $('nicknameDialogInput')
     field.value = nickname
@@ -50,12 +56,14 @@ export function setupNickname({ client, notify, onChange }) {
     onSecure(msg) {
       if (msg.type !== SECURE_MSG.DEVICE_INFO) return
       nickname = msg.nickname
+      infoSeen = true
       if (document.activeElement !== input) input.value = nickname
       showDeviceId(msg.mac)
       onChange(nickname)
     },
     reset() {
       nickname = ''
+      infoSeen = false
       input.value = ''
       showDeviceId(undefined)
       onChange('')

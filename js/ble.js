@@ -203,7 +203,7 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
       // toward its lockout (Chrome does not always include the ATT code in the message).
       throw new Error(describeRegisterError(error, bootRegistration))
     }
-    tokenStore.save(device.id, token)
+    tokenStore.save(device.id, token, device.name)
     registeredThisConnect = true
     return { token, nonce }
   }
@@ -238,15 +238,44 @@ export function createClient({ onStatus, onDisconnect, onSecure = () => {} }) {
     return REGISTER_DEFAULT_CODE
   }
 
+  // Bookkeeping after a successful proof must not fail the connection.
+  function keepToken(update) {
+    try {
+      update()
+    } catch (error) {
+      log(`auth: could not update saved token (${describeError(error)})`)
+    }
+  }
+
+  // No token under this device.id: Chrome may have given the same ClipKey a new id. Try the
+  // tokens saved under other ids (a failed proof only counts toward this link's limit).
+  async function proveKnownToken() {
+    for (const { id, token } of tokenStore.candidates(device.id, device.name)) {
+      let creds
+      try {
+        creds = await prove(token)
+      } catch (error) {
+        if (!device?.gatt?.connected || !chars) throw error // the link is gone: let connect retry
+        log(`auth: other saved token refused (${describeError(error)})`)
+        continue
+      }
+      log('auth: token saved under another device id proved (id changed)')
+      keepToken(() => tokenStore.moveTo(id, device.id, device.name))
+      return creds
+    }
+    return null
+  }
+
   async function authenticate(forceRegister, getSetupCode) {
     const stored = forceRegister ? null : tokenStore.load(device.id)
     if (stored) log('auth: prove with saved token')
-    let creds
-    justRegistered = !stored
+    let creds = stored || forceRegister ? null : await proveKnownToken()
+    justRegistered = !stored && !creds
     registeredWithoutCode = false
     if (stored) {
       creds = await prove(stored)
-    } else {
+      keepToken(() => tokenStore.save(device.id, stored, device.name)) // the name helps proveKnownToken
+    } else if (!creds) {
       const code = await chooseRegisterCode(getSetupCode)
       if (!code) throw Object.assign(new Error('등록을 취소했습니다'), { name: 'AbortError' })
       creds = await register(code)
