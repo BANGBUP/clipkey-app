@@ -6,27 +6,13 @@
 // or 0x01, flags (bit0 deflate), name length, name, data.
 
 import { PAYLOAD } from './pcrx.js'
+import { crc32 } from './crc.js'
 
 export const PACK_PREFIX = '[CK1.'
 export const PACK_END = ']'
 const NAME_MAX = 200
 
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256)
-  for (let i = 0; i < 256; i++) {
-    let c = i
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-    table[i] = c >>> 0
-  }
-  return table
-})()
-
-/** CRC-32 (IEEE, as in zip). */
-export function crc32(bytes) {
-  let crc = 0xffffffff
-  for (const b of bytes) crc = CRC_TABLE[(crc ^ b) & 0xff] ^ (crc >>> 8)
-  return (crc ^ 0xffffffff) >>> 0
-}
+export { crc32 } // kept here for older imports
 
 const concat = (...parts) => {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))

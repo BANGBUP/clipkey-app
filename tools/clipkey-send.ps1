@@ -4,12 +4,14 @@
     [ValidateRange(5, 1000)][int]$DelayMs = 5,
     [string]$Parts,
     [ValidateRange(64, 32768)][int]$FrameBytes = 1024,
+    [string]$CancelId,
+    [int]$CancelCount,
     [switch]$NoCompress,
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
-$ClipKeyVersion = '1.0.95'
-$PartHeader = 7
+$ClipKeyVersion = '1.0.96'
+$PartHeader = 9
 $PartGapMs = 500
 Add-Type -Namespace ClipKey -Name LedKeys -MemberDefinition @'
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);
@@ -32,6 +34,17 @@ public static bool SendSymbols(int[] symbols, int start, int count, int delayMs)
         System.Threading.Thread.Sleep(delayMs);
     }
     return true;
+}
+static uint[] crcTable;
+public static uint Crc32(byte[] data) {
+    if (crcTable == null) {
+        var t = new uint[256];
+        for (uint i = 0; i < 256; i++) { uint c = i; for (int k = 0; k < 8; k++) c = (c & 1) != 0 ? 0xEDB88320 ^ (c >> 1) : c >> 1; t[i] = c; }
+        crcTable = t;
+    }
+    uint crc = 0xFFFFFFFF;
+    foreach (byte b in data) crc = crcTable[(crc ^ b) & 0xFF] ^ (crc >> 8);
+    return crc ^ 0xFFFFFFFF;
 }
 '@
 $KEYUP = 0x2
@@ -112,7 +125,21 @@ function Get-Smaller([byte[]]$data) {
     }
     @{ Bytes = $data; Packed = $false }
 }
-if ($Path) {
+function Get-LE([uint64]$value, [int]$bytes) {
+    , [byte[]](0..($bytes - 1) | ForEach-Object { [byte](($value -shr (8 * $_)) -band 0xFF) })
+}
+$name = $null
+if ($CancelId) {
+    if ($CancelId -notmatch '^[0-9a-fA-F]{1,8}$' -or $CancelCount -lt 1 -or $CancelCount -gt 65535) {
+        Write-Host '폐기할 묶음 번호(16진수)와 조각 수를 넣으세요. 예: -CancelId 1a2b3c4d -CancelCount 14' -ForegroundColor Red
+        exit 1
+    }
+    $payload = [byte[]](@([byte]5) + (Get-LE ([Convert]::ToUInt32($CancelId, 16)) 4) + (Get-LE $CancelCount 2))
+    $what = "폐기 신호(묶음 {0})" -f $CancelId.ToLower()
+    $preview = $what
+    $raw = $payload
+    $compressed = $false
+} elseif ($Path) {
     $file = Get-Item -LiteralPath $Path
     $raw = [IO.File]::ReadAllBytes($file.FullName)
     $name = [Text.Encoding]::UTF8.GetBytes($file.Name)
@@ -123,6 +150,7 @@ if ($Path) {
     $payload = [byte[]](@([byte]1, [byte]$flags, [byte]$name.Length) + $name + $body.Bytes)
     $what = "파일 {0} {1}바이트" -f $file.Name, $raw.Length
     $preview = $file.Name
+    $label = $file.Name
 } else {
     $fromClipboard = -not $PSBoundParameters.ContainsKey('Text')
     if ($fromClipboard) {
@@ -136,44 +164,49 @@ if ($Path) {
     $raw = [Text.Encoding]::UTF8.GetBytes($Text)
     $body = Get-Smaller $raw
     $compressed = $body.Packed
-    if (-not $compressed -and $raw[0] -le 2) { $body = @{ Bytes = (Compress-Bytes $raw) }; $compressed = $true }
+    if (-not $compressed -and $raw[0] -le 5) { $body = @{ Bytes = (Compress-Bytes $raw) }; $compressed = $true }
     $payload = if ($compressed) { [byte[]](@([byte]0) + $body.Bytes) } else { $raw }
     $what = "{0}자 {1}바이트" -f [Globalization.StringInfo]::new($Text).LengthInTextElements, $raw.Length
     $cut = 40
     if ($Text.Length -gt $cut -and [char]::IsHighSurrogate($Text[$cut - 1])) { $cut-- }
     $preview = if ($Text.Length -gt $cut) { $Text.Substring(0, $cut) + '...' } else { $Text }
+    $label = "{0} 텍스트 {1}자" -f $(if ($fromClipboard) { '클립보드' } else { '보낸' }), [Globalization.StringInfo]::new($Text).LengthInTextElements
 }
 $frames = New-Object System.Collections.Generic.List[object]
 $partNote = ''
-$partNumbers = @()
-if ($payload.Length -le $FrameBytes -and -not $Parts) {
+$frameParts = New-Object System.Collections.Generic.List[int]
+if ($CancelId -or ($payload.Length -le $FrameBytes -and -not $Parts)) {
     $frames.Add($payload)
+    $frameParts.Add(0)
 } else {
     $partSize = $FrameBytes - $PartHeader
-    $count = [int][math]::Ceiling($payload.Length / $partSize)
-    if ($count -gt 65535) {
+    $pieceCount = [int][math]::Ceiling($payload.Length / $partSize)
+    if ($pieceCount -gt 65535) {
         Write-Host ("너무 큽니다: {0}" -f $what) -ForegroundColor Red
         exit 1
     }
-    $id = Get-Crc16 $payload
-    $pick = if ($Parts) { Read-Parts $Parts $count } else { 1..$count }
+    $id = [ClipKey.LedKeys]::Crc32($payload)
+    $pick = if ($Parts) { Read-Parts $Parts $pieceCount } else { 1..$pieceCount }
     if (-not $pick) {
-        Write-Host ("조각 번호는 1부터 {0}까지, 3,5,8-40 처럼 넣으세요: {1}" -f $count, $Parts) -ForegroundColor Red
+        Write-Host ("조각 번호는 1부터 {0}까지, 3,5,8-40 처럼 넣으세요: {1}" -f $pieceCount, $Parts) -ForegroundColor Red
         exit 1
     }
+    $nameBytes = [Text.Encoding]::UTF8.GetBytes($label)
+    if ($nameBytes.Length -gt 200) { $nameBytes = [Text.Encoding]::UTF8.GetBytes($label.Substring(0, [math]::Min($label.Length, 60))) }
+    $frames.Add([byte[]](@([byte]3) + (Get-LE $id 4) + (Get-LE $pieceCount 2) + (Get-LE $raw.Length 4) + @([byte]$nameBytes.Length) + $nameBytes))
+    $frameParts.Add(0)
+    $idBytes = Get-LE $id 4
+    $countBytes = Get-LE $pieceCount 2
     foreach ($n in $pick) {
-        if ($n -lt 1 -or $n -gt $count) {
-            Write-Host ("조각 번호는 1부터 {0}까지입니다: {1}" -f $count, $n) -ForegroundColor Red
-            exit 1
-        }
         $start = ($n - 1) * $partSize
         $piece = New-Object byte[] ([math]::Min($partSize, $payload.Length - $start))
         [Array]::Copy($payload, $start, $piece, 0, $piece.Length)
-        $header = [byte[]]@(2, ($id -band 0xFF), ($id -shr 8), (($n - 1) -band 0xFF), (($n - 1) -shr 8), ($count -band 0xFF), ($count -shr 8))
+        $header = [byte[]](@([byte]4) + $idBytes + (Get-LE ($n - 1) 2) + $countBytes)
         $frames.Add([byte[]]($header + $piece))
-        $partNumbers += $n
+        $frameParts.Add($n)
     }
-    $partNote = if ($Parts) { ", 조각 {0}만(전체 {1}개)" -f (Format-Parts $pick), $count } else { ", 조각 {0}개로 나눔" -f $count }
+    $partNote = if ($Parts) { ", 조각 {0}만(전체 {1}개)" -f (Format-Parts $pick), $pieceCount } else { ", 조각 {0}개로 나눔" -f $pieceCount }
+    Write-Host ("묶음 {0:x8} 조각 {1}개: {2}" -f $id, $pieceCount, $label)
 }
 $sync = @(3, 0, 3, 0, 1, 2, 1, 2)
 $symbolSets = New-Object System.Collections.Generic.List[object]
@@ -236,7 +269,7 @@ function Restore-Locks {
     $false
 }
 $done = 0
-$partsLeft = $partNumbers
+$partsLeft = @()
 $step = 256
 $clock = [Diagnostics.Stopwatch]::StartNew()
 [ClipKey.LedKeys]::Num = $Num.State
@@ -250,7 +283,7 @@ try {
     for ($p = 0; $p -lt $symbolSets.Count -and -not $stopped; $p++) {
         $symbols = $symbolSets[$p]
         if ($p -gt 0) { Start-Sleep -Milliseconds $PartGapMs }
-        $partsLeft = $partNumbers | Select-Object -Skip $p
+        $partsLeft = @($frameParts | Select-Object -Skip $p | Where-Object { $_ -gt 0 })
         $sent = 0
         while ($sent -lt $symbols.Length) {
             $count = [math]::Min($step, $symbols.Length - $sent)

@@ -2,6 +2,7 @@
 // SECURE PC_RX (progress) and PC_TEXT (UTF-8 chunks) messages. Pure parsing + reassembly.
 
 import { SECURE_MSG } from './constants.js'
+import { crc16, crc32 } from './crc.js'
 
 export const PC_RX_STATE = Object.freeze({
   RECEIVING: 1, // the ClipKey is receiving from the PC (start, then about every 32 bytes)
@@ -17,13 +18,21 @@ export const PAYLOAD = Object.freeze({
   DEFLATE_TEXT: 0x00, // [0x00, raw deflate of UTF-8 text]
   FILE: 0x01, // [0x01, flags (bit0 deflate), name length, name UTF-8, data]
   // One piece of a payload too big for one frame: the pieces' data joined in order is the
-  // payload (0x00 / 0x01 / plain text). The id is the same when the same content is sent again.
-  PART: 0x02, // [0x02, id u16, index u16 (from 0), count u16, data]
+  // payload (0x00 / 0x01 / plain text). The id is the payload's checksum, so the same content
+  // sent again (or resumed later) has the same id, and pieces of other sends never mix.
+  PART: 0x02, // older scripts: [0x02, id u16 (CRC-16), index u16 (from 0), count u16, data]
+  PART32: 0x04, // [0x04, id u32 (CRC-32), index u16, count u16, data]
+  // Sent before the pieces: what they are, so the 중단된 받기 list can name it.
+  INFO: 0x03, // [0x03, id u32, count u16, size u32 (original bytes), name length, name UTF-8]
+  // The PC gave up a stopped send (트레이 '폐기'): drop its kept pieces.
+  CANCEL: 0x05, // [0x05, id u32, count u16]
 })
 
 const PART_HEADER = 7
+const PART32_HEADER = 9
 
 const u16 = (bytes, at) => bytes[at] | (bytes[at + 1] << 8)
+const u32 = (bytes, at) => (u16(bytes, at) | (u16(bytes, at + 2) << 16)) >>> 0
 
 /** [0x07, state, received u16 LE, total u16 LE] */
 export function parsePcRx(bytes) {
@@ -61,12 +70,21 @@ function onDone(rx) {
   const buffer = rx.buffer
   if (!buffer) return { rx, event: null } // nothing collected (e.g. joined after the chunks)
   if (buffer.broken || buffer.filled !== buffer.total) return fail(rx, '일부가 빠졌습니다')
-  if (buffer.bytes[0] === PAYLOAD.PART) {
-    const part = parsePart(buffer.bytes)
-    if (!part) return fail(rx, '조각 정보가 잘못되었습니다')
-    return { rx: { buffer: null }, event: { type: 'part', ...part } }
+  const done = { rx: { buffer: null } }
+  const bytes = buffer.bytes
+  if (bytes[0] === PAYLOAD.PART || bytes[0] === PAYLOAD.PART32) {
+    const part = parsePart(bytes)
+    return part ? { ...done, event: { type: 'part', ...part } } : fail(rx, '조각 정보가 잘못되었습니다')
   }
-  return { rx: { buffer: null }, event: payloadEvent(buffer.bytes) }
+  if (bytes[0] === PAYLOAD.INFO) {
+    const info = parseInfo(bytes)
+    return { ...done, event: info ? { type: 'info', ...info } : null } // just a label: a bad one is skipped
+  }
+  if (bytes[0] === PAYLOAD.CANCEL) {
+    const cancel = bytes.length >= 7 ? { type: 'cancel', id: u32(bytes, 1), count: u16(bytes, 5), wide: true } : null
+    return { ...done, event: cancel }
+  }
+  return { ...done, event: payloadEvent(bytes) }
 }
 
 /**
@@ -81,47 +99,55 @@ export function payloadEvent(bytes) {
     const file = parseFilePayload(bytes)
     return file ? { type: 'file', ...file, size } : { type: 'failed', reason: '파일 정보가 잘못되었습니다' }
   }
-  if (bytes[0] === PAYLOAD.PART) return { type: 'failed', reason: '조각 정보가 잘못되었습니다' }
+  if (bytes[0] >= PAYLOAD.PART && bytes[0] <= PAYLOAD.CANCEL) return { type: 'failed', reason: '조각 정보가 잘못되었습니다' }
   return { type: 'done', text: new TextDecoder('utf-8', { fatal: false }).decode(bytes), size }
 }
 
-/** [0x02, id, index, count, data] -> { id, index, count, data } or null. */
+/** A piece (0x02 or 0x04) -> { id, index, count, wide, data } or null. */
 export function parsePart(bytes) {
-  if (bytes.length <= PART_HEADER) return null
-  const part = { id: u16(bytes, 1), index: u16(bytes, 3), count: u16(bytes, 5), data: bytes.slice(PART_HEADER) }
+  const wide = bytes[0] === PAYLOAD.PART32
+  if (!wide && bytes[0] !== PAYLOAD.PART) return null
+  const header = wide ? PART32_HEADER : PART_HEADER
+  if (bytes.length <= header) return null
+  const id = wide ? u32(bytes, 1) : u16(bytes, 1)
+  const at = wide ? 5 : 3
+  const part = { id, index: u16(bytes, at), count: u16(bytes, at + 2), wide, data: bytes.slice(header) }
   return part.count >= 1 && part.index < part.count ? part : null
 }
 
-/** CRC-16/CCITT (poly 0x1021, init 0xFFFF), as clipkey-send.ps1 Get-Crc16. */
-export function crc16(bytes) {
-  let crc = 0xffff
-  for (const b of bytes) {
-    crc ^= b << 8
-    for (let i = 0; i < 8; i++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff
-  }
-  return crc
+/** [0x03, id u32, count u16, size u32, name length, name] -> { id, count, wide, size, name } or null. */
+export function parseInfo(bytes) {
+  if (bytes.length < 12 || bytes[0] !== PAYLOAD.INFO) return null
+  const nameEnd = 12 + bytes[11]
+  if (nameEnd > bytes.length) return null
+  const info = { id: u32(bytes, 1), count: u16(bytes, 5), wide: true, size: u32(bytes, 7) }
+  const name = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(12, nameEnd))
+  return info.count >= 1 ? { ...info, name } : null
 }
 
+export { crc16 } // tests and older callers
+
 /** No pieces collected. */
-export const EMPTY_PARTS = Object.freeze({ id: -1, count: 0, pieces: Object.freeze([]) })
+export const EMPTY_PARTS = Object.freeze({ id: -1, count: 0, wide: false, pieces: Object.freeze([]) })
+
+/** The same send: pieces of it belong together. */
+export const sameSet = (a, b) => a.id === b.id && a.count === b.count && Boolean(a.wide) === Boolean(b.wide)
 
 /**
- * Adds one piece. A different id (or count) starts a new collection. Returns
+ * Adds one piece. A different send starts a new collection. Returns
  * { parts, have, missing (1-based numbers before the newest piece), payload (when complete),
  *   mixed (complete but not the content the id names: dropped) }.
  */
-export function addPart(parts, { id, index, count, data }) {
-  const same = parts.id === id && parts.count === count
-  const pieces = same ? parts.pieces.slice() : new Array(count).fill(null)
+export function addPart(parts, { id, index, count, wide = false, data }) {
+  const pieces = sameSet(parts, { id, count, wide }) ? parts.pieces.slice() : new Array(count).fill(null)
   pieces[index] = data
-  const next = { id, count, pieces }
+  const next = { ...parts, id, count, wide, pieces }
   const have = pieces.filter(Boolean).length
   if (have === count) {
     const payload = new Uint8Array(pieces.reduce((n, p) => n + p.length, 0))
     pieces.reduce((at, p) => (payload.set(p, at), at + p.length), 0)
-    // The id is the payload's CRC: pieces kept from another content with the same id and count
-    // (kept for a day for resuming) would join into garbage.
-    if (crc16(payload) !== id) return { parts: EMPTY_PARTS, have, missing: [], payload: null, mixed: true }
+    // The id is the payload's checksum: kept pieces of other content would join into garbage.
+    if ((wide ? crc32(payload) : crc16(payload)) !== id) return { parts: EMPTY_PARTS, have, missing: [], payload: null, mixed: true }
     return { parts: EMPTY_PARTS, have, missing: [], payload }
   }
   const newest = pieces.reduce((last, p, i) => (p ? i : last), -1)
@@ -135,53 +161,15 @@ export function addPart(parts, { id, index, count, data }) {
  * the newest (pieces go out in order). [] when no split payload is involved.
  */
 export function partsToResend(parts, damaged = null) {
-  const hint = damaged && damaged[0] === PAYLOAD.PART ? parsePart(damaged) : null
-  const sameSet = hint && parts.count > 0 && hint.id === parts.id && hint.count === parts.count
+  const hint = damaged ? parsePart(damaged) : null
+  const ours = hint && parts.count > 0 && sameSet(hint, parts)
   // A new set (or none collected yet): only the broken piece itself is known.
-  if (hint && !sameSet) return [hint.index + 1]
+  if (hint && !ours) return [hint.index + 1]
   if (parts.count === 0) return []
   const newest = parts.pieces.reduce((last, p, i) => (p ? i : last), -1)
-  const failedAt = sameSet ? hint.index : newest + 1
+  const failedAt = ours ? hint.index : newest + 1
   const upTo = Math.min(Math.max(newest, failedAt), parts.count - 1)
   return parts.pieces.slice(0, upTo + 1).flatMap((p, i) => (p ? [] : [i + 1]))
-}
-
-/** Every piece number (1-based) not yet received: what '이어 보내기' must still send. */
-export const partsLeft = (parts) => parts.pieces.flatMap((p, i) => (p ? [] : [i + 1]))
-
-/** [3, 5, 8, 9, 10] -> "3,5,8-10" (what clipkey-send.ps1 -Parts takes). */
-export function formatParts(numbers) {
-  const runs = []
-  for (const n of numbers) {
-    const last = runs[runs.length - 1]
-    if (last && n === last[1] + 1) last[1] = n
-    else runs.push([n, n])
-  }
-  return runs.map(([a, b]) => (a === b ? `${a}` : b === a + 1 ? `${a},${b}` : `${a}-${b}`)).join(',')
-}
-
-const toBase64 = (bytes) => {
-  let s = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(s)
-}
-const fromBase64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0))
-
-/** Pieces collected so far as JSON-safe data (kept so a closed app can resume). */
-export const storeParts = (parts, at) => ({ id: parts.id, count: parts.count, at, pieces: parts.pieces.map((p) => (p ? toBase64(p) : null)) })
-
-/** Back from storeParts, or EMPTY_PARTS when missing, older than maxAgeMs or malformed. */
-export function loadParts(saved, now, maxAgeMs) {
-  try {
-    const ok =
-      saved && Number.isInteger(saved.id) && Number.isInteger(saved.count) && saved.count > 0 &&
-      Array.isArray(saved.pieces) && saved.pieces.length === saved.count && now - saved.at < maxAgeMs
-    if (!ok) return EMPTY_PARTS
-    const pieces = saved.pieces.map((p) => (typeof p === 'string' ? fromBase64(p) : null))
-    return pieces.some(Boolean) ? { id: saved.id, count: saved.count, pieces } : EMPTY_PARTS
-  } catch {
-    return EMPTY_PARTS
-  }
 }
 
 /** [0x01, flags, name length, name, data] -> { name, deflated, data } or null. */

@@ -393,3 +393,7 @@ details.more > .hint { margin-top: 4px; }
 /* PC 필수 스크립트: 타이핑 | 압축 side by side */
 .split-btns { display: flex; gap: 6px; flex: none; align-self: center; }
 .split-btns > .btn { padding-inline: 12px; }
+/* 받기 탭 '중단된 받기' */
+.held-row { align-items: center; padding: 6px 0; border-top: 1px solid var(--border); }
+.held-row > .btn { flex: none; align-self: center; }
+.held-row strong { overflow-wrap: anywhere; }

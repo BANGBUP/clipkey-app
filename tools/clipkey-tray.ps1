@@ -3,7 +3,7 @@
     [switch]$Uninstall
 )
 $ErrorActionPreference = 'Stop'
-$ClipKeyVersion = '1.0.95'
+$ClipKeyVersion = '1.0.96'
 $sendScript = Join-Path $PSScriptRoot 'clipkey-send.ps1'
 $recvScript = Join-Path $PSScriptRoot 'clipkey-recv.ps1'
 $logFile = Join-Path $env:TEMP 'clipkey-tray.log'
@@ -83,7 +83,8 @@ $menu = New-Object Windows.Forms.ContextMenuStrip
 $miClip = New-Object Windows.Forms.ToolStripMenuItem '클립보드 보내기'
 $miClip.Font = New-Object Drawing.Font($miClip.Font, [Drawing.FontStyle]::Bold)
 $miFile = New-Object Windows.Forms.ToolStripMenuItem '파일 보내기...'
-$miParts = New-Object Windows.Forms.ToolStripMenuItem '이어 보내기 / 빠진 조각...'
+$miResume = New-Object Windows.Forms.ToolStripMenuItem '이어 보내기'
+$miParts = New-Object Windows.Forms.ToolStripMenuItem '빠진 조각 다시 보내기...'
 $miStop = New-Object Windows.Forms.ToolStripMenuItem '보내기 멈추기'
 $miStop.Enabled = $false
 $miRecv = New-Object Windows.Forms.ToolStripMenuItem '받기 창'
@@ -93,7 +94,7 @@ $miLog = New-Object Windows.Forms.ToolStripMenuItem '마지막 기록 보기'
 $miQuit = New-Object Windows.Forms.ToolStripMenuItem '끝내기'
 $miVersion = New-Object Windows.Forms.ToolStripMenuItem "버전 $ClipKeyVersion"
 $miVersion.Enabled = $false
-[void]$menu.Items.AddRange(@($miClip, $miFile, $miParts, $miStop, (New-Object Windows.Forms.ToolStripSeparator), $miRecv, (New-Object Windows.Forms.ToolStripSeparator), $miSlow, $miLog, $miQuit, $miVersion))
+[void]$menu.Items.AddRange(@($miClip, $miFile, $miResume, $miParts, $miStop, (New-Object Windows.Forms.ToolStripSeparator), $miRecv, (New-Object Windows.Forms.ToolStripSeparator), $miSlow, $miLog, $miQuit, $miVersion))
 $tray.ContextMenuStrip = $menu
 $tray.Visible = $true
 $timer = New-Object Windows.Forms.Timer
@@ -101,15 +102,28 @@ $timer.Interval = 300
 $script:proc = $null
 $script:stopped = $false
 $script:lastArgs = $null
-$script:resumeParts = ''
+$script:resumeList = @()
+$ResumeMax = 5
+$ResumeKeepDays = 7
 try {
     $saved = Get-Content -Raw -Encoding UTF8 $resumeFile | ConvertFrom-Json
-    if ($saved.args -is [string]) { $script:lastArgs = $saved.args }
-    if ($saved.parts -is [string] -and ((Get-Date) - [datetime]::Parse($saved.at)).TotalHours -lt 24) { $script:resumeParts = $saved.parts }
+    if ($saved.last -is [string]) { $script:lastArgs = $saved.last }
+    elseif ($saved.args -is [string]) { $script:lastArgs = $saved.args }
+    $script:resumeList = @($saved.list | Where-Object {
+            $_.id -is [string] -and $_.args -is [string] -and ((Get-Date) - [datetime]$_.at).TotalDays -lt $ResumeKeepDays
+        } | Select-Object -First $ResumeMax)
 } catch { }
 function Save-Resume {
-    $data = @{ args = $script:lastArgs; parts = $script:resumeParts; at = (Get-Date).ToString('o') }
-    try { $data | ConvertTo-Json | Set-Content -Encoding UTF8 $resumeFile } catch { }
+    $data = @{ last = $script:lastArgs; list = @($script:resumeList) }
+    try { ConvertTo-Json -InputObject $data -Depth 4 | Set-Content -Encoding UTF8 $resumeFile } catch { }
+}
+function Remove-Resume([string]$id) {
+    $script:resumeList = @($script:resumeList | Where-Object { $_.id -ne $id })
+    Save-Resume
+}
+function Add-Resume($entry) {
+    $script:resumeList = @(@($entry) + @($script:resumeList | Where-Object { $_.id -ne $entry.id }) | Select-Object -First $ResumeMax)
+    Save-Resume
 }
 $stopSignal = New-Object Threading.EventWaitHandle($false, 'ManualReset', 'ClipKeySendStop')
 $script:killAt = $null
@@ -124,12 +138,17 @@ function Set-Busy([bool]$busy) {
     $miClip.Enabled = -not $busy
     $miFile.Enabled = -not $busy
     $miParts.Enabled = -not $busy
+    $miResume.Enabled = -not $busy
     $miStop.Enabled = $busy
 }
-function Start-Send([string]$extraArgs, [switch]$Resume) {
-    if ($script:proc) { Show-Note '이미 보내는 중입니다.' 'Warning'; return }
-    if (-not (Test-Path $sendScript)) { Show-Note "clipkey-send.ps1이 없습니다: $sendScript" 'Error'; return }
-    if (-not $Resume) { $script:lastArgs = $extraArgs; $script:resumeParts = ''; Save-Resume }
+function Start-Send([string]$what, [string]$more = '', [switch]$Cancel, [string]$parts = '') {
+    if ($script:proc) { Show-Note '이미 보내는 중입니다.' 'Warning'; return $false }
+    if (-not (Test-Path $sendScript)) { Show-Note "clipkey-send.ps1이 없습니다: $sendScript" 'Error'; return $false }
+    $script:sendWhat = $what
+    $script:sendParts = $parts
+    $script:sendCancel = [bool]$Cancel
+    if (-not $Cancel) { $script:lastArgs = $what; Save-Resume }
+    $extraArgs = "$what$more"
     if ($miSlow.Checked) { $extraArgs += " -DelayMs $SlowDelayMs" }
     $command = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; `$ProgressPreference = 'SilentlyContinue'; " +
         "try {{ & '{0}'{1} *>&1 | ForEach-Object {{ `"`$_`" }}; exit `$LASTEXITCODE }} " +
@@ -149,7 +168,112 @@ function Start-Send([string]$extraArgs, [switch]$Resume) {
     $script:outTask = $script:proc.StandardOutput.ReadToEndAsync()
     Set-Busy $true
     $timer.Start()
-    Show-Note '보내는 중입니다. 끝나면 알려 드립니다. 그동안 키보드를 쓰지 마세요.'
+    if (-not $Cancel) { Show-Note '보내는 중입니다. 끝나면 알려 드립니다. 그동안 키보드를 쓰지 마세요.' }
+    $true
+}
+function Expand-Parts([string]$text) {
+    $list = New-Object System.Collections.Generic.List[int]
+    foreach ($item in ($text -split '[,\s]+' | Where-Object { $_ })) {
+        if ($item -match '^(\d{1,5})-(\d{1,5})$') { foreach ($n in [int]$Matches[1]..[int]$Matches[2]) { $list.Add($n) } }
+        elseif ($item -match '^\d{1,5}$') { $list.Add([int]$item) }
+    }
+    , [int[]]@($list | Sort-Object -Unique)
+}
+function Join-Parts([int[]]$numbers) {
+    $runs = New-Object System.Collections.Generic.List[string]
+    $i = 0
+    while ($i -lt $numbers.Count) {
+        $j = $i
+        while ($j + 1 -lt $numbers.Count -and $numbers[$j + 1] -eq $numbers[$j] + 1) { $j++ }
+        $runs.Add($(if ($j -eq $i) { "$($numbers[$i])" } elseif ($j -eq $i + 1) { "$($numbers[$i]),$($numbers[$j])" } else { "$($numbers[$i])-$($numbers[$j])" }))
+        $i = $j + 1
+    }
+    $runs -join ','
+}
+function Update-Resume($out, [int]$code) {
+    $head = $out | Where-Object { $_ -match '^묶음 ([0-9a-f]{8}) 조각 (\d+)개: (.*)$' } | Select-Object -First 1
+    if (-not ($head -and $head -match '^묶음 ([0-9a-f]{8}) 조각 (\d+)개: (.*)$')) { return $null }
+    $id, $count, $name = $Matches[1], [int]$Matches[2], $Matches[3]
+    $left = $out | Where-Object { $_ -match '-Parts ([\d,\-]+)' } | Select-Object -Last 1
+    $notSent = if ($left -and $left -match '-Parts ([\d,\-]+)') { Expand-Parts $Matches[1] } else { [int[]]@() }
+    if (-not $notSent.Count -and ($code -ne 0 -or $script:stopped)) { return $null }
+    $old = $script:resumeList | Where-Object { $_.id -eq $id } | Select-Object -First 1
+    $before = if ($old) { Expand-Parts $old.parts } else { [int[]]@() }
+    $picked = if ($script:sendParts) { Expand-Parts $script:sendParts } else { [int[]](1..$count) }
+    $remain = [int[]]@(@($before | Where-Object { $picked -notcontains $_ }) + @($notSent) | Sort-Object -Unique)
+    if (-not $remain.Count) { Remove-Resume $id; return $null }
+    $entry = [pscustomobject]@{ args = $script:sendWhat; name = $name; id = $id; count = $count; parts = (Join-Parts $remain); at = (Get-Date).ToString('o') }
+    Add-Resume $entry
+    if ($notSent.Count) { return $entry }
+    $null
+}
+$script:keepForm = $null
+$script:keepEntry = $null
+$script:keepLeft = 0
+$keepTimer = New-Object Windows.Forms.Timer
+$keepTimer.Interval = 1000
+function Close-KeepChoice([bool]$discard) {
+    $keepTimer.Stop()
+    $entry = $script:keepEntry
+    $form = $script:keepForm
+    $script:keepEntry = $null
+    $script:keepForm = $null
+    if ($form) { $form.Close(); $form.Dispose() }
+    if (-not $entry) { return }
+    if (-not $discard) { Show-Note ("보관했습니다: {0}. 트레이의 '이어 보내기'로 이어 보내세요." -f $entry.name); return }
+    Remove-Resume $entry.id
+    if (Start-Send (" -CancelId {0} -CancelCount {1}" -f $entry.id, $entry.count) -Cancel) {
+        Show-Note ("폐기했습니다: {0}. 폰에도 지우라는 신호를 보냅니다." -f $entry.name)
+    } else {
+        Show-Note ("폐기했습니다: {0}. 폰의 '중단된 받기'에서는 직접 지우세요." -f $entry.name) 'Warning'
+    }
+}
+$keepTimer.Add_Tick({
+    $script:keepLeft--
+    if ($script:keepLeft -le 0) { Close-KeepChoice $false }
+    elseif ($script:keepForm) { $script:keepForm.AcceptButton.Text = "보관 ($($script:keepLeft))" }
+})
+function Show-KeepChoice($entry) {
+    if ($script:keepForm) { Close-KeepChoice $false }
+    $form = New-Object Windows.Forms.Form
+    $form.Text = 'ClipKey 보내기 멈춤'
+    $form.TopMost = $true
+    $form.FormBorderStyle = 'FixedDialog'
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    $form.ShowInTaskbar = $false
+    $form.StartPosition = 'CenterScreen'
+    $form.AutoSize = $true
+    $form.AutoSizeMode = 'GrowAndShrink'
+    $form.Padding = New-Object Windows.Forms.Padding(12)
+    $layout = New-Object Windows.Forms.FlowLayoutPanel
+    $layout.FlowDirection = 'TopDown'
+    $layout.AutoSize = $true
+    $label = New-Object Windows.Forms.Label
+    $label.AutoSize = $true
+    $label.MaximumSize = New-Object Drawing.Size(420, 0)
+    $label.Text = "{0}`r`n남은 조각 {1} (전체 {2}개)`r`n`r`n보관하면 트레이의 '이어 보내기'로 남은 조각만 보낼 수 있습니다.`r`n폐기하면 폰의 '중단된 받기'에서도 지웁니다." -f $entry.name, $entry.parts, $entry.count
+    $buttons = New-Object Windows.Forms.FlowLayoutPanel
+    $buttons.AutoSize = $true
+    $keep = New-Object Windows.Forms.Button
+    $keep.AutoSize = $true
+    $keep.Text = '보관 (5)'
+    $keep.Add_Click({ Close-KeepChoice $false })
+    $drop = New-Object Windows.Forms.Button
+    $drop.AutoSize = $true
+    $drop.Text = '폐기'
+    $drop.Add_Click({ Close-KeepChoice $true })
+    $buttons.Controls.AddRange(@($keep, $drop))
+    $layout.Controls.AddRange(@($label, $buttons))
+    $form.Controls.Add($layout)
+    $form.AcceptButton = $keep
+    $form.Add_FormClosing({ param($sender, $e) if ($script:keepForm -eq $sender) { $script:keepForm = $null; Close-KeepChoice $false } })
+    $script:keepForm = $form
+    $script:keepEntry = $entry
+    $script:keepLeft = 5
+    $form.Show()
+    $form.Activate()
+    $keepTimer.Start()
 }
 function Complete-Send {
     $timer.Stop()
@@ -159,17 +283,18 @@ function Complete-Send {
     $script:proc.Dispose()
     $script:proc = $null
     Set-Content -Path $logFile -Encoding UTF8 -Value (@("[$(Get-Date)] 트레이 $ClipKeyVersion, 종료 코드 $code") + $out)
-    $left = $out | Where-Object { $_ -match '-Parts ([\d,\-]+)' } | Select-Object -Last 1
-    if ($left -and $left -match '-Parts ([\d,\-]+)') { $script:resumeParts = $Matches[1] }
-    elseif ($code -eq 0 -and -not $script:stopped) { $script:resumeParts = '' }
-    Save-Resume
+    $entry = if ($script:sendCancel) { $null } else { Update-Resume $out $code }
     Set-Busy $false
     if ($script:stopped) {
         if ($script:killed) {
             Start-Sleep -Milliseconds 200
             Restore-Locks $script:locks
         }
-        Show-Note '보내기를 멈추고 잠금 키를 되돌렸습니다. 기기는 2초 뒤 받던 내용을 버립니다.' 'Warning'
+        if ($entry -and -not $script:quitting) { Show-KeepChoice $entry }
+        elseif ($script:sendCancel) { Show-Note "폐기 신호를 멈췄습니다. 폰의 '중단된 받기'에서는 직접 지우세요." 'Warning' }
+        else { Show-Note '보내기를 멈추고 잠금 키를 되돌렸습니다.' 'Warning' }
+    } elseif ($script:sendCancel -and $code -ne 0) {
+        Show-Note "폐기 신호를 보내지 못했습니다. 폰의 '중단된 받기'에서는 직접 지우세요." 'Warning'
     } elseif ($code -eq 0 -and $out.Count) {
         Show-Note $out[-1]
     } elseif ($out.Count) {
@@ -198,21 +323,58 @@ $timer.Add_Tick({
     if ($script:proc.HasExited) { Complete-Send; return }
     if ($script:killAt -and (Get-Date) -gt $script:killAt) { Kill-Send; Complete-Send }
 })
-$miClip.Add_Click({ Start-Send '' })
-$tray.Add_MouseDoubleClick({ param($s, $e) if ($e.Button -eq 'Left') { Start-Send '' } })
+$miClip.Add_Click({ [void](Start-Send '') })
+$tray.Add_MouseDoubleClick({ param($s, $e) if ($e.Button -eq 'Left') { [void](Start-Send '') } })
 $miFile.Add_Click({
     $dialog = New-Object Windows.Forms.OpenFileDialog
     $dialog.Title = 'ClipKey로 보낼 파일 (크면 조각으로 나눠 보냄, 32KB에 약 13분)'
-    if ($dialog.ShowDialog() -eq 'OK') { Start-Send (" -Path '{0}'" -f $dialog.FileName.Replace("'", "''")) }
+    if ($dialog.ShowDialog() -eq 'OK') { [void](Start-Send (" -Path '{0}'" -f $dialog.FileName.Replace("'", "''"))) }
 })
+function Send-Parts([string]$what, [string]$label, [string]$prefill, [string]$title) {
+    $prompt = "$label 에서 보낼 조각 번호 (예: 3,5,8-40).`r`n폰 앱 받기 탭에 다른 번호가 보이면 그 번호로 바꾸세요."
+    $numbers = [Microsoft.VisualBasic.Interaction]::InputBox($prompt, $title, $prefill)
+    if ($numbers -match '^[\d,\-\s]+$' -and $numbers -match '\d') { [void](Start-Send $what (" -Parts '{0}'" -f $numbers.Trim()) -parts $numbers.Trim()) }
+    elseif ($numbers) { Show-Note '숫자, 쉼표, -만 넣으세요. 예: 3,5,8-40' 'Warning' }
+}
 $miParts.Add_Click({
     if ($null -eq $script:lastArgs) { Show-Note '먼저 보낸 것이 없습니다.' 'Warning'; return }
-    $what = if ($script:lastArgs) { '마지막에 보낸 파일' } else { '클립보드(보낼 때와 내용이 같아야 함)' }
-    $prompt = "$what 에서 보낼 조각 번호 (예: 3,5,8-40).`r`n폰 앱 받기 탭에 나온 번호를 넣으세요. 미리 넣은 값은 PC가 못 보낸 조각만이라, 폰에 다른 번호가 보이면 그 번호로 바꾸세요."
-    $numbers = [Microsoft.VisualBasic.Interaction]::InputBox($prompt, 'ClipKey 이어 보내기', $script:resumeParts)
-    if ($numbers -match '^[\d,\-\s]+$' -and $numbers -match '\d') { Start-Send ("{0} -Parts '{1}'" -f $script:lastArgs, $numbers.Trim()) -Resume }
-    elseif ($numbers) { Show-Note '숫자, 쉼표, -만 넣으세요. 예: 3,5,8-40' 'Warning' }
+    $label = if ($script:lastArgs) { '마지막에 보낸 파일' } else { '클립보드(보낼 때와 내용이 같아야 함)' }
+    Send-Parts $script:lastArgs $label '' 'ClipKey 빠진 조각 다시 보내기'
 })
+function New-MenuItem([string]$text, $entry, [scriptblock]$onClick) {
+    $item = New-Object Windows.Forms.ToolStripMenuItem $text
+    $item.Tag = $entry
+    if ($onClick) { $item.Add_Click($onClick) }
+    $item
+}
+function Update-ResumeMenu {
+    $miResume.DropDownItems.Clear()
+    if (-not $script:resumeList.Count) {
+        $none = New-MenuItem '(멈춘 보내기 없음)' $null $null
+        $none.Enabled = $false
+        [void]$miResume.DropDownItems.Add($none)
+        return
+    }
+    foreach ($entry in $script:resumeList) {
+        $when = ([datetime]$entry.at).ToString('M/d HH:mm')
+        $item = New-MenuItem ("{0} · 남은 {1} / {2}개 · {3}" -f $entry.name, $entry.parts, $entry.count, $when) $entry $null
+        [void]$item.DropDownItems.Add((New-MenuItem '남은 조각 보내기...' $entry {
+                    param($sender)
+                    $e = $sender.Tag
+                    $label = if ($e.args) { $e.name } else { "$($e.name) (클립보드가 그때와 같아야 함)" }
+                    Send-Parts $e.args $label $e.parts 'ClipKey 이어 보내기'
+                }))
+        [void]$item.DropDownItems.Add((New-MenuItem '목록에서만 지우기' $entry { param($sender) Remove-Resume $sender.Tag.id }))
+        [void]$item.DropDownItems.Add((New-MenuItem '폐기 (폰에서도 지움)' $entry {
+                    param($sender)
+                    Remove-Resume $sender.Tag.id
+                    [void](Start-Send (" -CancelId {0} -CancelCount {1}" -f $sender.Tag.id, $sender.Tag.count) -Cancel)
+                }))
+        [void]$miResume.DropDownItems.Add($item)
+    }
+}
+$menu.Add_Opening({ Update-ResumeMenu })
+Update-ResumeMenu
 $miStop.Add_Click({ Stop-Send 150 })
 $miRecv.Add_Click({
     if (-not (Test-Path $recvScript)) { Show-Note "clipkey-recv.ps1이 없습니다: $recvScript" 'Error'; return }
@@ -225,7 +387,9 @@ $miRecv.Add_Click({
 $miLog.Add_Click({
     if (Test-Path $logFile) { Start-Process notepad.exe $logFile } else { Show-Note '아직 기록이 없습니다.' }
 })
+$script:quitting = $false
 $miQuit.Add_Click({
+    $script:quitting = $true
     if ($script:proc -and -not $script:proc.HasExited) {
         Stop-Send 0
         if (-not $script:proc.WaitForExit(150000)) { Kill-Send }

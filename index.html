@@ -113,6 +113,11 @@
         <progress id="pcRxBar" class="hidden" max="1" value="0"></progress>
       </div>
       <label class="check"><input type="checkbox" id="pcRxAutoCopy"> 받으면 바로 이 폰 클립보드에 복사</label>
+      <div id="pcRxHeldBox" class="field hidden">
+        <strong>중단된 받기</strong>
+        <p class="hint">멈춘 큰 받기를 보관합니다(최대 5개, 7일). 다른 걸 먼저 받아도 그대로이고, PC 트레이의 <b>이어 보내기</b>로 남은 조각을 보내면 이어서 받습니다.</p>
+        <div id="pcRxHeld" class="phrase-list"></div>
+      </div>
       <details class="phrases">
         <summary><strong>사용 방법</strong></summary>
         <p class="hint">PC에서 clipkey-send.ps1 스크립트를 실행하면 PC 클립보드의 텍스트가 이 화면으로 옵니다.
