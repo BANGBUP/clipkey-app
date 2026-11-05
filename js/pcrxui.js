@@ -2,9 +2,10 @@
 // memory only (they may be passwords); just the auto-copy preference is saved.
 
 import { SECURE_MSG } from './constants.js'
-import { EMPTY_RX, EMPTY_PARTS, reducePcRx, partsToResend, parsePart, payloadEvent, inflateText, inflateBytes, textOf, charCount } from './pcrx.js'
+import { EMPTY_RX, EMPTY_PARTS, PAYLOAD, reducePcRx, partsToResend, parsePart, payloadEvent, inflateText, inflateBytes, textOf, charCount } from './pcrx.js'
 import { addPiece, noteInfo, removeSet, findSet, keyOf, haveOf, partsLeft, formatParts, setName } from './pcrxsets.js'
 import { readHeld, writeHeld, setupHeldList } from './pcrxheld.js'
+import { repairCandidates, pickRepair } from './pcrxrepair.js'
 
 const MAX_ITEMS = 10
 const PREF_KEY = 'clipkey.pcrx.v1'
@@ -198,11 +199,12 @@ export function setupPcReceive({ notify, toSendTab }) {
     $('pcRxEmpty').classList.toggle('hidden', items.length > 0)
   }
 
-  async function received(text, size, compressed = false) {
+  async function received(text, size, compressed = false, repaired = false) {
     setItems([{ id: nextId++, text, file: null, size, compressed, at: new Date() }, ...items].slice(0, MAX_ITEMS))
     setStatus(`완료: ${charCount(text)}자를 받았습니다`)
     markUnseen()
-    if (autoCopyBox.checked) await autoCopy(text)
+    // A repaired text comes late (a newer one may already be on the clipboard): no auto-copy.
+    if (autoCopyBox.checked && !repaired) await autoCopy(text)
     else notify('PC에서 텍스트를 받았습니다')
   }
 
@@ -223,10 +225,10 @@ export function setupPcReceive({ notify, toSendTab }) {
 
   // A frame whose checksum failed: keep what arrived (to compare with the original) and,
   // for a split payload, say which pieces to send again. Stopped: the send waits in the list.
-  function failedFrame(event) {
+  function failedFrame(event, activeThen = active()) {
     // The broken frame's own header says whose piece it was, if it was one.
     const hint = event.damaged ? parsePart(event.damaged) : null
-    const set = (hint && findSet(held, hint)) ?? (hint ? null : active())
+    const set = (hint && findSet(held, hint)) ?? (hint ? null : activeThen)
     const resend = partsToResend(set ?? EMPTY_PARTS, event.damaged)
     if (event.damaged) {
       const stamp = new Date().toTimeString().slice(0, 8).replaceAll(':', '')
@@ -302,7 +304,36 @@ export function setupPcReceive({ notify, toSendTab }) {
   }
 
   // A payload too big for one frame comes in pieces (clipkey-send.ps1 splits it).
-  function onPart(part) {
+  // A frame with a bad CRC (newer firmware sends the CRC that arrived): try removing the extra
+  // clock edges a Bluetooth bounce adds. Only a single sensible fix is taken.
+  async function tryRepair(event) {
+    const activeThen = active() // what was arriving when it broke (other frames may come meanwhile)
+    let picked = null
+    try {
+      picked = await pickRepair(repairCandidates(event.damaged, event.rxCrc), (part) => Boolean(findSet(held, part)))
+    } catch {
+      picked = null
+    }
+    if (!picked) {
+      failedFrame(event, activeThen)
+      return
+    }
+    const fixed = picked.payload
+    const how = `깨진 묶음을 자동으로 고쳤습니다 (박자가 ${picked.removed.length}번 더 들어옴)`
+    if (fixed[0] === PAYLOAD.PART || fixed[0] === PAYLOAD.PART32) {
+      const alternatives = picked.alternatives.map((p) => parsePart(p).data)
+      if (onPart(parsePart(fixed), alternatives)?.ignored) failedFrame(event, activeThen)
+      else notify(how)
+      return
+    }
+    notify(how)
+    activeKey = null // a whole text in one frame
+    onPayload({ ...payloadEvent(fixed), repaired: true })
+  }
+
+  // alternatives: piece data from pcrxrepair.js (the send's checksum picks one when joined)
+  function onPart(part, alternatives = null) {
+    const repaired = alternatives !== null
     const key = keyOf(part)
     lastPieceAt = Date.now()
     if (!part.wide && part.index === 0 && lastDone?.key === key) lastDone = null // older scripts: no info frame
@@ -312,9 +343,15 @@ export function setupPcReceive({ notify, toSendTab }) {
       setStatus(`이미 다 받은 내용의 조각 ${part.index + 1}/${part.count}: 건너뜁니다`)
       return
     }
-    const result = addPiece(held, part, Date.now())
+    const result = addPiece(held, part, Date.now(), alternatives)
+    if (result.ignored) return result // a repair for a piece already in: not used
     activeKey = result.set ? result.set.key : null
     setHeld(result.sets, result.dropped)
+    if (result.unrepaired) {
+      const again = formatParts(result.unrepaired)
+      failed(`${setName(result.set)}: 자동으로 고친 조각 ${again}이(가) 틀렸습니다. 트레이 '이어 보내기'로 그 조각을 다시 보내세요`)
+      return
+    }
     if (result.mixed) {
       failed('조각을 다 모았지만 내용이 맞지 않습니다(다른 내용의 조각이 섞임). 처음부터 다시 보내세요')
       return
@@ -327,21 +364,23 @@ export function setupPcReceive({ notify, toSendTab }) {
     const missing = result.missing.length
       ? `. 빠진 조각 ${formatParts(result.missing)}: 다 보낸 뒤 PC 트레이의 '빠진 조각 다시 보내기'에 넣어 다시 보내세요`
       : ''
-    setStatus(`${setName(result.set)} 조각 ${result.have}/${part.count}개 받음${missing}`)
+    const note = repaired ? ' (깨진 것을 자동으로 고침)' : ''
+    setStatus(`${setName(result.set)} 조각 ${result.have}/${part.count}개 받음${note}${missing}`)
     markUnseen()
   }
 
   function onPayload(event) {
     if (event.type === 'done' && event.compressed) {
       inflateText(event.compressed)
-        .then((text) => received(text, event.size, true))
+        .then((text) => received(text, event.size, true, event.repaired))
         .catch(() => failed('압축을 풀지 못했습니다'))
     } else if (event.type === 'file') {
       receivedFile(event).catch(() => failed('파일 압축을 풀지 못했습니다'))
     } else if (event.type === 'done') {
-      received(event.text, event.size)
+      received(event.text, event.size, false, event.repaired)
     } else if (event.type === 'failed') {
-      failedFrame(event)
+      if (event.damaged && event.rxCrc !== undefined) tryRepair(event)
+      else failedFrame(event)
     }
   }
 

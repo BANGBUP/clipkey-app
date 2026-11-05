@@ -2,6 +2,7 @@
 // wait while other things are sent, and be resumed later. Pure: no DOM, no storage.
 
 import { addPart, sameSet, parseFilePayload, PAYLOAD } from './pcrx.js'
+import { crc16, crc32 } from './crc.js'
 
 export const MAX_SETS = 5
 export const KEEP_MS = 7 * 24 * 60 * 60 * 1000
@@ -9,8 +10,9 @@ export const KEEP_MS = 7 * 24 * 60 * 60 * 1000
 /** One kept send: { key, id, count, wide, name, size, at, pieces }. */
 export const keyOf = ({ id, count, wide }) => `${wide ? 'w' : 'n'}${id.toString(16)}-${count}`
 
+// repaired: piece indexes fixed by pcrxrepair.js (checked only when the send is joined)
 const newSet = ({ id, count, wide = false }, now) =>
-  ({ key: keyOf({ id, count, wide }), id, count, wide: Boolean(wide), name: null, size: null, at: now, pieces: new Array(count).fill(null) })
+  ({ key: keyOf({ id, count, wide }), id, count, wide: Boolean(wide), name: null, size: null, at: now, pieces: new Array(count).fill(null), repaired: [] })
 
 export const findSet = (sets, ref) => sets.find((s) => sameSet(s, ref)) ?? null
 export const haveOf = (set) => set.pieces.filter(Boolean).length
@@ -53,17 +55,62 @@ export function noteInfo(sets, info, now) {
   return { ...keep(sets, set), set }
 }
 
+const joinPieces = (pieces) => {
+  const out = new Uint8Array(pieces.reduce((n, p) => n + p.length, 0))
+  pieces.reduce((at, p) => (out.set(p, at), at + p.length), 0)
+  return out
+}
+
+// The repaired pieces' alternatives tried together until the send's checksum matches
+// (at most 256 tries). Returns the payload or null.
+function joinWithAlternatives(set, pieces) {
+  const choices = (set.repaired ?? []).map((i) => [i, set.alts?.[i] ?? [pieces[i]]])
+  const tries = choices.reduce((n, [, alts]) => n * alts.length, 1)
+  if (!choices.length || tries > 256) return null
+  for (let t = 0; t < tries; t++) {
+    let rest = t
+    const trial = pieces.slice()
+    for (const [i, alts] of choices) {
+      trial[i] = alts[rest % alts.length]
+      rest = Math.floor(rest / alts.length)
+    }
+    const payload = joinPieces(trial)
+    if ((set.wide ? crc32(payload) : crc16(payload)) === set.id) return payload
+  }
+  return null
+}
+
 /**
- * Adds a piece to its own set. Returns { sets, set (null once joined), have, missing,
- * payload, mixed, dropped (sets pushed out) }.
+ * Adds a piece to its own set. `alternatives` (piece data) when it came from pcrxrepair.js:
+ * the send's checksum picks among them when it is joined. Returns { sets, set (null once
+ * joined), have, missing, payload, mixed, dropped (sets pushed out), unrepaired (joined
+ * wrong even so: those repaired pieces are taken out again, 1-based), ignored (a repair for
+ * a piece already in) }.
  */
-export function addPiece(sets, part, now) {
+export function addPiece(sets, part, now, alternatives = null) {
   const set = findSet(sets, part) ?? newSet(part, now)
-  const result = addPart(set, part)
+  const repairedBefore = set.repaired ?? []
+  if (alternatives && set.pieces[part.index] && !repairedBefore.includes(part.index)) {
+    return { sets, set, have: haveOf(set), missing: [], payload: null, ignored: true, dropped: [] }
+  }
+  const fixed = [...repairedBefore.filter((i) => i !== part.index), ...(alternatives ? [part.index] : [])]
+  const alts = { ...(set.alts ?? {}) }
+  if (alternatives) alts[part.index] = alternatives
+  else delete alts[part.index]
+  const current = { ...set, repaired: fixed, alts }
+  const result = addPart(current, part)
+  if (result.mixed && fixed.length) {
+    const pieces = set.pieces.map((p, i) => (i === part.index ? part.data : p))
+    const payload = joinWithAlternatives(current, pieces)
+    if (payload) return { ...result, mixed: false, payload, sets: sets.filter((s) => s.key !== set.key), set: null, dropped: [] }
+    // The repairs guessed wrong: keep the rest, those pieces must come again.
+    const next = { ...current, pieces: pieces.map((p, i) => (fixed.includes(i) ? null : p)), repaired: [], alts: {}, at: now }
+    return { ...result, mixed: false, ...keep(sets, next), set: next, unrepaired: fixed.map((i) => i + 1) }
+  }
   if (result.payload || result.mixed) {
     return { ...result, sets: sets.filter((s) => s.key !== set.key), set: null, dropped: [] }
   }
-  const next = { ...set, pieces: result.parts.pieces, at: now }
+  const next = { ...current, pieces: result.parts.pieces, at: now }
   return { ...result, ...keep(sets, next), set: next }
 }
 
@@ -85,7 +132,8 @@ const fromBase64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0))
 
 /** JSON-safe copy for storage. */
 export const storeSets = (sets) =>
-  sets.map(({ id, count, wide, name, size, at, pieces }) => ({ id, count, wide, name, size, at, pieces: pieces.map((p) => (p ? toBase64(p) : null)) }))
+  sets.map(({ id, count, wide, name, size, at, pieces, repaired = [] }) =>
+    ({ id, count, wide, name, size, at, repaired, pieces: pieces.map((p) => (p ? toBase64(p) : null)) }))
 
 function loadOne(saved, now) {
   const ok =
@@ -96,7 +144,8 @@ function loadOne(saved, now) {
   const wide = saved.wide === true
   const name = typeof saved.name === 'string' ? saved.name : null
   const size = Number.isFinite(saved.size) ? saved.size : null
-  return { key: keyOf({ id: saved.id, count: saved.count, wide }), id: saved.id, count: saved.count, wide, name, size, at: saved.at, pieces }
+  const repaired = Array.isArray(saved.repaired) ? saved.repaired.filter((i) => Number.isInteger(i) && pieces[i]) : []
+  return { key: keyOf({ id: saved.id, count: saved.count, wide }), id: saved.id, count: saved.count, wide, name, size, at: saved.at, pieces, repaired, alts: {} }
 }
 
 /** Back from storeSets: expired or malformed ones are left out. */

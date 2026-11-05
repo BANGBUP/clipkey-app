@@ -34,10 +34,11 @@ const PART32_HEADER = 9
 const u16 = (bytes, at) => bytes[at] | (bytes[at + 1] << 8)
 const u32 = (bytes, at) => (u16(bytes, at) | (u16(bytes, at + 2) << 16)) >>> 0
 
-/** [0x07, state, received u16 LE, total u16 LE] */
+/** [0x07, state, received u16 LE, total u16 LE] (+ BAD from newer firmware: the CRC bytes that arrived, u16 LE) */
 export function parsePcRx(bytes) {
   if (bytes.length < 6) throw new Error('PC 수신 상태 길이 오류')
-  return { type: SECURE_MSG.PC_RX, state: bytes[1], received: u16(bytes, 2), total: u16(bytes, 4) }
+  const msg = { type: SECURE_MSG.PC_RX, state: bytes[1], received: u16(bytes, 2), total: u16(bytes, 4) }
+  return bytes.length >= 8 && bytes[1] === PC_RX_STATE.BAD ? { ...msg, rxCrc: u16(bytes, 6) } : msg
 }
 
 /** [0x08, offset u16 LE, total u16 LE, bytes 1..64] */
@@ -233,7 +234,8 @@ export function reducePcRx(rx, msg) {
       const b = rx.buffer
       const damaged = b && !b.broken && b.filled === b.total && b.total === msg.total ? b.bytes : null
       const out = fail(rx, '확인값이 맞지 않아 버렸습니다 (전송 중 깨짐)')
-      return damaged ? { ...out, event: { ...out.event, damaged } } : out
+      const crc = msg.rxCrc === undefined ? {} : { rxCrc: msg.rxCrc } // to try a repair (pcrxrepair.js)
+      return damaged ? { ...out, event: { ...out.event, damaged, ...crc } } : out
     }
     case PC_RX_STATE.TIMEOUT: {
       const out = fail(rx, 'PC 전송이 멈춰 중단했습니다')
