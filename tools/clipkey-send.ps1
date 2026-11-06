@@ -10,7 +10,7 @@
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
-$ClipKeyVersion = '1.1.0'
+$ClipKeyVersion = '1.1.2'
 $PartHeader = 9
 $PartGapMs = 500
 Add-Type -Namespace ClipKey -Name LedKeys -MemberDefinition @'
@@ -291,7 +291,8 @@ try {
             $sent += $count
             $done += $count
             $status = "{0}/{1}바이트" -f [int]($done / 4), [int]($totalSymbols / 4)
-            if ($symbolSets.Count -gt 1) { $status = "조각 {0}/{1}, {2}" -f ($p + 1), $symbolSets.Count, $status }
+            if ($frameParts[$p] -gt 0) { $status = "조각 {0}/{1}, {2}" -f $frameParts[$p], $pieceCount, $status }
+            elseif ($symbolSets.Count -gt 1) { $status = "알림, {0}" -f $status }
             Write-Progress -Activity 'ClipKey로 보내는 중' -Status $status -PercentComplete (100 * $done / $totalSymbols)
         }
     }

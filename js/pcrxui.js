@@ -3,7 +3,7 @@
 
 import { SECURE_MSG } from './constants.js'
 import { EMPTY_RX, EMPTY_PARTS, PAYLOAD, reducePcRx, partsToResend, parsePart, payloadEvent, inflateText, inflateBytes, textOf, charCount } from './pcrx.js'
-import { addPiece, noteInfo, removeSet, findSet, keyOf, haveOf, partsLeft, formatParts, setName } from './pcrxsets.js'
+import { addPiece, noteInfo, removeSet, findSet, keyOf, haveOf, partsLeft, formatParts, setName, comingPiece } from './pcrxsets.js'
 import { readHeld, writeHeld, setupHeldList } from './pcrxheld.js'
 import { repairCandidates, pickRepair } from './pcrxrepair.js'
 
@@ -57,6 +57,7 @@ export function setupPcReceive({ notify, toSendTab }) {
   let activeKey = null // the send whose pieces are coming in now
   let lastDone = null // { key, at }: a send already joined (a full resend goes on after it)
   let lastPieceAt = 0
+  const lastIndex = new Map() // set key -> 0-based number of the piece that came in last (-1: send started)
   const active = () => (activeKey ? held.find((s) => s.key === activeKey) ?? null : null)
   const renderHeld = setupHeldList({
     box: $('pcRxHeldBox'),
@@ -262,11 +263,13 @@ export function setupPcReceive({ notify, toSendTab }) {
       const percent = Math.floor((100 * event.received) / Math.max(event.total, 1))
       if (event.starting && Date.now() - lastPieceAt > NEXT_FRAME_MS) activeKey = null
       const set = active()
-      // Which piece is coming is only known once it is in (its number is inside), so: how many
-      // are in so far, and how far the one coming now is.
-      const have = set ? `${short(setName(set))} ${haveOf(set)}/${set.count}조각 받음 · 지금 조각 ` : ''
-      setStatus(`받는 중 ${have}${percent}% (${event.received}/${event.total}바이트)`, event)
-      setChip(set ? `${haveOf(set)}/${set.count} +${percent}%` : `${percent}%`)
+      // Piece numbers count from 1, like the PC's. Which piece is coming is only known once it is
+      // in (its number is inside): the next missing one in order is shown meanwhile.
+      const coming = set ? comingPiece(set, lastIndex.get(set.key) ?? -1) : null
+      const piece = coming ? `조각 ${coming}/${set.count} ` : ''
+      const have = set ? ` · ${haveOf(set)}개 받음` : ''
+      setStatus(`받는 중 ${set ? `${short(setName(set))} ` : ''}${piece}${percent}% (${event.received}/${event.total}바이트)${have}`, event)
+      setChip(coming ? `${coming}/${set.count} ${percent}%` : `${percent}%`)
       if (event.starting) markUnseen()
     } else if (event.type === 'part') {
       onPart(event)
@@ -286,6 +289,7 @@ export function setupPcReceive({ notify, toSendTab }) {
     lastPieceAt = Date.now()
     const result = noteInfo(held, info, Date.now())
     activeKey = result.set.key
+    lastIndex.set(activeKey, -1)
     setHeld(result.sets, result.dropped)
     const have = haveOf(result.set)
     const before = have ? `, ${have}개는 전에 받아 둠` : ''
@@ -319,7 +323,8 @@ export function setupPcReceive({ notify, toSendTab }) {
       return
     }
     const fixed = picked.payload
-    const how = `깨진 묶음을 자동으로 고쳤습니다 (박자가 ${picked.removed.length}번 더 들어옴)`
+    const why = picked.replaced !== undefined ? '신호 하나가 다음 신호와 겹침' : `박자가 ${picked.removed.length}번 더 들어옴`
+    const how = `깨진 묶음을 자동으로 고쳤습니다 (${why})`
     if (fixed[0] === PAYLOAD.PART || fixed[0] === PAYLOAD.PART32) {
       const alternatives = picked.alternatives.map((p) => parsePart(p).data)
       if (onPart(parsePart(fixed), alternatives)?.ignored) failedFrame(event, activeThen)
@@ -343,6 +348,7 @@ export function setupPcReceive({ notify, toSendTab }) {
       setStatus(`이미 다 받은 내용의 조각 ${part.index + 1}/${part.count}: 건너뜁니다`)
       return
     }
+    lastIndex.set(key, part.index)
     const result = addPiece(held, part, Date.now(), alternatives)
     if (result.ignored) return result // a repair for a piece already in: not used
     activeKey = result.set ? result.set.key : null

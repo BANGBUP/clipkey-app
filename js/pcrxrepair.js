@@ -1,8 +1,11 @@
-// Repairing a PC -> phone frame whose CRC failed. Over Bluetooth the LED reports sometimes
-// bounce: the clock (Scroll Lock) is seen once or twice too often, so a symbol is counted
-// twice (received 3,3,2,2 where 3,2 was sent). Everything after shifts, and the frame's last
-// symbols are pushed into the CRC bytes. Removing the extra symbols and checking the CRC that
-// arrived (newer firmware sends it with BAD) finds the frame that was sent. Pure.
+// Repairing a PC -> phone frame whose CRC failed. Two kinds of Bluetooth LED damage seen:
+// - bounce: the clock (Scroll Lock) is seen once or twice too often, so a symbol is counted
+//   twice (received 3,3,2,2 where 3,2 was sent). Everything after shifts, and the frame's last
+//   symbols are pushed into the CRC bytes. Removing the extra symbols fixes it.
+// - merged report: a clock edge arrives together with the next symbol's data, so that symbol
+//   reads as the next one (received 1,3,3 where 1,1,3 was sent). Nothing shifts; trying the
+//   other values for the first of two equal symbols fixes it.
+// The CRC that arrived (newer firmware sends it with BAD) tells which guess is right. Pure.
 
 import { PAYLOAD, parsePart, parseFilePayload, inflateBytes, textOf } from './pcrx.js'
 
@@ -41,11 +44,24 @@ export function extraSymbolGuesses(symbols) {
 }
 
 /**
- * Candidate payloads for a damaged frame: each one, with the extra symbols removed, matches
- * the part of the CRC that is still there. Usually one; none when the damage is something
- * else; sometimes a chance match too (the caller checks further).
- * The CRC of the unchanged front is computed once; each guess only redoes the shifted rest.
- * @returns {{ payload: Uint8Array, removed: number[] }[]}
+ * Symbols to try instead of the received ones for a merged report: at k (the first of two
+ * equal symbols), each other value. { at, value } each.
+ */
+export function mergedReportGuesses(symbols) {
+  const guesses = []
+  for (let k = 0; k + 1 < symbols.length; k++) {
+    if (symbols[k] !== symbols[k + 1]) continue
+    for (let value = 0; value < 4; value++) if (value !== symbols[k]) guesses.push({ at: k, value })
+  }
+  return guesses
+}
+
+/**
+ * Candidate payloads for a damaged frame: each one, with a guessed fix, matches the CRC (the
+ * part of it still there). Usually one; none when the damage is something else; sometimes a
+ * chance match too (the caller checks further).
+ * The CRC of the unchanged front is computed once; each guess only redoes the rest.
+ * @returns {{ payload: Uint8Array, removed: number[], replaced?: number }[]}
  */
 export function repairCandidates(damaged, rxCrc) {
   const n = damaged.length
@@ -58,11 +74,8 @@ export function repairCandidates(damaged, rxCrc) {
   const total = symbols.length // n*4 + 8
   const found = []
   const seen = new Set()
-  for (const removed of extraSymbolGuesses(symbols)) {
-    const first = removed[0]
-    const skip = removed.length
-    // symbol j of the repaired stream (j >= first) is received symbol j + skip; past the end: unknown
-    const at = (j) => (j < first ? symbols[j] : j + skip < total ? symbols[j + skip] : 0)
+  // at(j): symbol j of the fixed stream; skip: how many CRC symbols were pushed out (unknown)
+  function tryFix(first, skip, at, extra) {
     const startByte = Math.min(Math.floor(first / 4), n)
     let crc = prefix[startByte]
     const tail = new Uint8Array(n - startByte)
@@ -74,15 +87,24 @@ export function repairCandidates(damaged, rxCrc) {
     }
     let got = 0
     for (let s = 0; s < 8; s++) got |= at(n * 4 + s) << (2 * s)
-    const mask = (1 << (2 * (8 - skip))) - 1 // the last `skip` CRC symbols were pushed out
-    if ((crc & mask) !== (got & mask)) continue
+    const mask = (1 << (2 * (8 - skip))) - 1
+    if ((crc & mask) !== (got & mask)) return
     const payload = new Uint8Array(n)
     payload.set(damaged.subarray(0, startByte))
     payload.set(tail, startByte)
     const key = payload.join(',')
-    if (seen.has(key)) continue
+    if (seen.has(key)) return
     seen.add(key)
-    found.push({ payload, removed })
+    found.push({ payload, ...extra })
+  }
+  for (const removed of extraSymbolGuesses(symbols)) {
+    const first = removed[0]
+    const skip = removed.length
+    // symbol j of the repaired stream (j >= first) is received symbol j + skip; past the end: unknown
+    tryFix(first, skip, (j) => (j < first ? symbols[j] : j + skip < total ? symbols[j + skip] : 0), { removed })
+  }
+  for (const { at: k, value } of mergedReportGuesses(symbols)) {
+    tryFix(k, 0, (j) => (j === k ? value : symbols[j]), { removed: [], replaced: k })
   }
   return found
 }

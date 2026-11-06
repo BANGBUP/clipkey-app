@@ -20,6 +20,16 @@ export const haveOf = (set) => set.pieces.filter(Boolean).length
 /** Every piece number (1-based) not yet received: what '이어 보내기' must still send. */
 export const partsLeft = (set) => set.pieces.flatMap((p, i) => (p ? [] : [i + 1]))
 
+/**
+ * The piece (1-based) most likely arriving now: the PC sends the missing ones in order, so the
+ * first missing after the last one in (`lastIndex`, 0-based; -1 when a send starts). Its number
+ * is only known once it is in, so this is a guess shown while it comes. null when none is missing.
+ */
+export function comingPiece(set, lastIndex = -1) {
+  const left = partsLeft(set)
+  return left.find((n) => n - 1 > lastIndex) ?? left[0] ?? null
+}
+
 /** [3, 5, 8, 9, 10] -> "3,5,8-10" (what clipkey-send.ps1 -Parts takes). */
 export function formatParts(numbers) {
   const runs = []
