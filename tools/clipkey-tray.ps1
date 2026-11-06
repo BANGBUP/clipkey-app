@@ -3,7 +3,7 @@
     [switch]$Uninstall
 )
 $ErrorActionPreference = 'Stop'
-$ClipKeyVersion = '1.1.0'
+$ClipKeyVersion = '1.1.3'
 $sendScript = Join-Path $PSScriptRoot 'clipkey-send.ps1'
 $recvScript = Join-Path $PSScriptRoot 'clipkey-recv.ps1'
 $logFile = Join-Path $env:TEMP 'clipkey-tray.log'
@@ -303,6 +303,9 @@ function Complete-Send {
         if ($entry -and -not $script:quitting) { Show-KeepChoice $entry }
         elseif ($script:sendCancel) { Show-Note "폐기 신호를 멈췄습니다. 폰의 '중단된 받기'에서는 직접 지우세요." 'Warning' }
         else { Show-Note '보내기를 멈추고 잠금 키를 되돌렸습니다.' 'Warning' }
+    } elseif ($code -eq 3) {
+        $then = if ($entry) { "그쪽이 끝난 뒤 '이어 보내기'에서 $($entry.name)을(를) 이어서 보내세요." } else { '그쪽이 끝난 뒤 다시 보내세요.' }
+        Show-Note "ClipKey가 다른 PC에서 보내는 것을 받는 중이라 멈췄습니다. $then" 'Warning'
     } elseif ($script:sendCancel -and $code -ne 0) {
         Show-Note "폐기 신호를 보내지 못했습니다. 폰의 '중단된 받기'에서는 직접 지우세요." 'Warning'
     } elseif ($code -eq 0 -and $out.Count) {

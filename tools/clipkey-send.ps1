@@ -10,12 +10,13 @@
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
-$ClipKeyVersion = '1.1.2'
+$ClipKeyVersion = '1.1.3'
 $PartHeader = 9
 $PartGapMs = 500
 Add-Type -Namespace ClipKey -Name LedKeys -MemberDefinition @'
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);
 [DllImport("user32.dll")] public static extern short GetKeyState(int vk);
+[DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
 [DllImport("winmm.dll")] public static extern uint timeBeginPeriod(uint ms);
 [DllImport("winmm.dll")] public static extern uint timeEndPeriod(uint ms);
 public static bool Num, Caps, Scroll;
@@ -24,9 +25,13 @@ static void Flip(byte vk, byte scan, uint ext) {
     keybd_event(vk, scan, ext | 2, System.UIntPtr.Zero);
 }
 public static System.Threading.WaitHandle Stop;
+public const int VK_F24 = 0x87;
+public static bool Busy;
+public static bool BusyKey() { return (GetAsyncKeyState(VK_F24) & 0x8001) != 0; }
 public static bool SendSymbols(int[] symbols, int start, int count, int delayMs) {
     for (int i = start; i < start + count; i++) {
         if (Stop != null && Stop.WaitOne(0)) return false;
+        if (BusyKey()) { Busy = true; return false; }
         bool n = (symbols[i] & 1) != 0, c = (symbols[i] & 2) != 0;
         if (n != Num) { Flip(0x90, 0x45, 1); Num = n; }
         if (c != Caps) { Flip(0x14, 0x3A, 0); Caps = c; }
@@ -225,6 +230,7 @@ if ($DryRun) {
     exit 0
 }
 Start-Sleep -Seconds 1
+[void][ClipKey.LedKeys]::BusyKey()
 [void][ClipKey.LedKeys]::timeBeginPeriod(1)
 foreach ($key in $AllKeys) {
     $key.State = Get-Toggled $key
@@ -309,10 +315,15 @@ finally {
     if (-not $restored) {
         Write-Host '잠금 키(넘락·캡스락·스크롤락)를 원래대로 되돌리지 못했습니다. 직접 눌러 맞춰 주세요.' -ForegroundColor Red
     }
-    if ($done -lt $totalSymbols) {
+    if ([ClipKey.LedKeys]::Busy) {
+        Write-Host 'ClipKey가 다른 PC에서 보내는 것을 받는 중이라 멈췄습니다. 그쪽이 끝난 뒤 다시 보내세요.' -ForegroundColor Red
+    } elseif ($done -lt $totalSymbols) {
         Write-Host '전송이 중간에 멈췄습니다. 기기는 2초 뒤 받던 내용을 버립니다.' -ForegroundColor Red
+    }
+    if ($done -lt $totalSymbols) {
         if ($partsLeft) {
             Write-Host ("이어 보내기: 트레이의 '이어 보내기' 또는 같은 명령에 -Parts {0}" -f (Format-Parts $partsLeft)) -ForegroundColor Yellow
         }
     }
 }
+if ([ClipKey.LedKeys]::Busy) { exit 3 }
