@@ -57,11 +57,14 @@ body {
 .title-row { display: flex; align-items: center; justify-content: space-between; }
 h1 { font-size: 20px; margin: 0; }
 
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+/* one line: the device name gives way (…) so "수신 123/172 64%" keeps its place */
+.chips { display: flex; flex-wrap: nowrap; gap: 4px; margin: 8px 0; min-width: 0; }
 .chip {
-  font-size: 12px; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; padding: 2px 6px; border-radius: 999px;
   border: 1px solid var(--border); color: var(--muted);
+  white-space: nowrap; flex: none; font-variant-numeric: tabular-nums;
 }
+.chip[data-chip="link"] { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .chip.on { border-color: var(--ok); color: var(--ok); }
 .chip.warn { border-color: var(--warn); color: var(--warn); }
 .chip.bad { border-color: var(--danger); color: var(--danger); }

@@ -109,7 +109,7 @@ export function setupPcReceive({ notify, toSendTab }) {
   function setChip(progress) {
     if (progress !== null) pendingCopy = null
     chip.classList.toggle('hidden', progress === null)
-    if (progress !== null) chip.textContent = `수신 ${progress}`
+    if (progress !== null) chip.textContent = progress
   }
   function offerCopy(text) {
     pendingCopy = text
@@ -285,7 +285,8 @@ export function setupPcReceive({ notify, toSendTab }) {
       const have = set ? ` · ${haveOf(set)}개 받음` : ''
       const left = timeLeft(event, set, coming)
       setStatus(`받는 중 ${set ? `${short(setName(set))} ` : ''}${piece}${percent}% (${event.received}/${event.total}바이트)${have}${left}`, event)
-      setChip(coming ? `${coming}/${set.count} ${percent}%` : `${percent}%`)
+      // "↓123/172 64%": short enough for one line beside 유선 · 블루투스 on a narrow phone
+      setChip(coming ? `↓${coming}/${set.count} ${percent}%` : `수신 ${percent}%`)
       if (event.starting) markUnseen()
     } else if (event.type === 'part') {
       onPart(event)
