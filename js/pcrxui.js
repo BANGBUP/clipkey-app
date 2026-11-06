@@ -3,6 +3,8 @@
 
 import { SECURE_MSG } from './constants.js'
 import { EMPTY_RX, EMPTY_PARTS, PAYLOAD, reducePcRx, partsToResend, parsePart, payloadEvent, inflateText, inflateBytes, textOf, charCount } from './pcrx.js'
+import { etaStart, etaProgress, etaLeftMs } from './pcrxeta.js'
+import { formatDuration } from './sendstats.js'
 import { addPiece, noteInfo, removeSet, findSet, keyOf, haveOf, partsLeft, formatParts, setName, comingPiece } from './pcrxsets.js'
 import { readHeld, writeHeld, setupHeldList } from './pcrxheld.js'
 import { repairCandidates, pickRepair } from './pcrxrepair.js'
@@ -252,6 +254,19 @@ export function setupPcReceive({ notify, toSendTab }) {
 
   const short = (name) => (name.length > 24 ? `${name.slice(0, 23)}…` : name)
 
+  // " · 약 3분 20초 남음": from the speed since this send began here (a new one starts it over).
+  let eta = null
+  function timeLeft(event, set, coming) {
+    const now = Date.now()
+    const key = set?.key ?? null
+    if (event.starting && (!eta || key === null || eta.key !== key)) eta = etaStart(key, now)
+    if (!eta) return ''
+    eta = etaProgress(eta, event)
+    const piecesAfter = set && coming ? set.count - haveOf(set) - 1 : 0
+    const ms = etaLeftMs(eta, { received: event.received, total: event.total, piecesAfter }, now)
+    return ms === null ? '' : ` · 약 ${formatDuration(ms)} 남음`
+  }
+
   function onSecure(msg) {
     if (msg.type !== SECURE_MSG.PC_RX && msg.type !== SECURE_MSG.PC_TEXT) return
     const result = reducePcRx(rx, msg)
@@ -268,7 +283,8 @@ export function setupPcReceive({ notify, toSendTab }) {
       const coming = set ? comingPiece(set, lastIndex.get(set.key) ?? -1) : null
       const piece = coming ? `조각 ${coming}/${set.count} ` : ''
       const have = set ? ` · ${haveOf(set)}개 받음` : ''
-      setStatus(`받는 중 ${set ? `${short(setName(set))} ` : ''}${piece}${percent}% (${event.received}/${event.total}바이트)${have}`, event)
+      const left = timeLeft(event, set, coming)
+      setStatus(`받는 중 ${set ? `${short(setName(set))} ` : ''}${piece}${percent}% (${event.received}/${event.total}바이트)${have}${left}`, event)
       setChip(coming ? `${coming}/${set.count} ${percent}%` : `${percent}%`)
       if (event.starting) markUnseen()
     } else if (event.type === 'part') {
