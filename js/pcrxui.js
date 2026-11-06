@@ -2,7 +2,7 @@
 // memory only (they may be passwords); just the auto-copy preference is saved.
 
 import { SECURE_MSG } from './constants.js'
-import { EMPTY_RX, EMPTY_PARTS, PAYLOAD, reducePcRx, partsToResend, parsePart, payloadEvent, inflateText, inflateBytes, textOf, charCount } from './pcrx.js'
+import { EMPTY_RX, EMPTY_PARTS, PAYLOAD, reducePcRx, partsToResend, parsePart, payloadEvent, inflateText, inflateBytes, fileTextOf, charCount } from './pcrx.js'
 import { etaStart, etaProgress, etaLeftMs } from './pcrxeta.js'
 import { formatDuration } from './sendstats.js'
 import { addPiece, noteInfo, removeSet, findSet, keyOf, haveOf, partsLeft, formatParts, setName, comingPiece } from './pcrxsets.js'
@@ -213,7 +213,7 @@ export function setupPcReceive({ notify, toSendTab }) {
 
   async function receivedFile({ name, deflated, data, size }) {
     const bytes = deflated ? await inflateBytes(data) : data
-    const text = textOf(bytes)
+    const text = fileTextOf(bytes)
     setItems([{ id: nextId++, text, file: { name, bytes }, size, compressed: deflated, at: new Date() }, ...items].slice(0, MAX_ITEMS))
     setStatus(`완료: 파일 ${name} (${bytes.length}바이트)를 받았습니다`)
     markUnseen()

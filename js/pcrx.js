@@ -202,6 +202,31 @@ export function textOf(bytes) {
   }
 }
 
+// Characters a text file has besides printable ones: tab, line feed, form feed, carriage return.
+const NOT_TEXT = /[\u0000-\u0008\u000b\u000e-\u001f\u007f]/
+
+function decodeStrict(encoding, bytes) {
+  try {
+    const text = new TextDecoder(encoding, { fatal: true }).decode(bytes)
+    return NOT_TEXT.test(text) ? null : text
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A received file as text, or null for a binary file. Besides UTF-8, Windows text files come
+ * as UTF-16 (메모장 'Unicode', with its BOM) and as ANSI = CP949 (한글 Windows).
+ * Only for showing a file: a repair check stays with textOf (UTF-8 only, much stricter).
+ */
+export function fileTextOf(bytes) {
+  const utf8 = decodeStrict('utf-8', bytes)
+  if (utf8 !== null) return utf8
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return decodeStrict('utf-16le', bytes)
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return decodeStrict('utf-16be', bytes)
+  return decodeStrict('euc-kr', bytes) // the browsers' euc-kr is Windows' CP949
+}
+
 /** Characters as a person counts them (an emoji or a 한글 syllable is one). */
 export function charCount(text) {
   if (typeof Intl?.Segmenter === 'function') {
